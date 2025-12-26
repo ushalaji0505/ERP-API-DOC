@@ -1,0 +1,326 @@
+openapi: 3.0.0
+info:
+  title: PF Billing Service
+  description: API for managing demands, billing generation, and payment processing.
+  version: 1.0.0
+
+paths:
+  /demand/_create:
+    post:
+      tags:
+        - Demand Management
+      summary: Create a new Demand
+      description: Responsible for creating a demand and its associated demand details based on a consumer code.
+      operationId: createDemand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              example:
+                requestInfo:
+                  authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                  userInfo:
+                    userDetails: { uuid: "03a7ca95-78f2-4d45-b8a3-223852eac1b6" }
+                    selectedTenant: { uuid: "61275610-80e6-4349-adbd-ababc66a03f0" }
+                    selectedRoleDetails: [{ uuid: "8f641c19-e8c5-40ff-abf3-9a50b2707f31" }]
+                demands:
+                  consumerCode: "consumnercode2"
+                  businessService: "businessservice1"
+                  totalAmount: 500
+                  status: "Start"
+                  demandDetails:
+                    - taxHead: "taxHead2"
+                      taxAmount: 100
+                      collectionAmount: 200
+                    - taxHead: "taxHead22"
+                      taxAmount: 100
+                      collectionAmount: 200
+      responses:
+        '201':
+          description: Demand created successfully.
+        '400':
+          description: Invalid Request.
+
+  /demand/_update:
+    post:
+      tags:
+        - Demand Management
+      summary: Update existing Demand
+      description: Updates demand and demand details based on the provided Demand ID (uuid).
+      operationId: updateDemand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              example:
+                requestInfo:
+                  authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                  userInfo: 
+                    - uuid: "03a7ca95-78f2-4d45-b8a3-223852eac1b6"
+                  selectedTenant: 
+                    -uuid: 
+                      "61275610-80e6-4349-adbd-ababc66a03f0"
+                  selectedRoleDetails:
+                    [{ uuid: "8f641c19-e8c5-40ff-abf3-9a50b2707f31" }]
+                  
+                demands:
+                  uuid: "0e55c3d8-929b-499f-a87a-ee8422fa7a52"
+                  status: "PAID"
+                  demandDetails:
+                    - uuid: "b0118ef3-9025-423e-91e0-ba467edc37ef"
+                      taxHead: "taxHead6"
+                      taxAmount: 200
+                      collectionAmount: 100
+                    - uuid: "e2146d66-9a01-4cbc-b465-1ede6b5f7e65"
+                      taxHead: "taxHead61"
+                      taxAmount: 200
+                      collectionAmount: 100
+                    - taxHead: "taxHead62"
+                      taxAmount: 100
+                      collectionAmount: 100
+      responses:
+        '200':
+          description: Demand updated successfully.
+
+  /bill/_billSearch:
+    post:
+      tags:
+        - Bill Management
+      summary: Search or Generate Bill
+      description: |
+        Retrieves bill details based on a unique consumer code. 
+        
+        **Logic Flow:**
+        * **Case A (Demand Exists, No Bill):** If a bill does not exist for the consumer code, the system checks for an active 'Demand'. If a demand is found, a new Bill is automatically generated and returned.
+        * **Case B (Existing Bill):** If a bill already exists, it is retrieved directly from the database and returned.
+        
+        ### Attribute Explanations:
+        * **consumerCode**: The unique identifier for the consumer/service (e.g., IND-2024...).
+        * **businessService**: The type of service the bill belongs to (e.g., B4).
+        * **billDetails**: A list containing tax breakdown items like `BILLING_TAX`.
+        * **collectionAmount**: The actual amount paid/collected against the tax head.
+      operationId: searchBill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              requestInfo:
+                authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                userInfo:
+                  userDetails:
+                    uuid: "4a7353c7-2765-4279-870d-387f848a8b1b"
+                  selectedTenant:
+                    uuid: "61275610-80e6-4349-adbd-ababc66a03f0"
+                  selectedRoleDetails:
+                    - uuid: "8f641c19-e8c5-40ff-abf3-9a50b2707f31"
+              billDto:
+                consumerCode: "IND-2024-08-14-00041"
+                businessService: "B4"
+      responses:
+        '200':
+          description: Bill retrieved or generated successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                id: "94a4b5df-4eac-4d62-9d09-8d6b5dfaf594"
+                demandId: "f1ba4a64-6c60-4360-ab63-27c058b96cde"
+                consumerCode: "IND-2024-08-14-00041"
+                userUuid: "10585c21-ee18-483f-a4e1-330afe8d797f"
+                billNo: "BILL-2024-08-14-00006"
+                billDate: 1723623564987
+                businessService: "IND-2024-08-14-00041"
+                totalAmount: 30.00
+                status: "PAID"
+                auditDetails:
+                  createdBy: "thejaswini1@gmail.com"
+                  lastModifiedBy: "thejaswini1@gmail.com"
+                  createdTime: 1723623565002
+                  lastModifiedTime: 1723623713267
+                billDetails:
+                  - id: "57ce9bdb-2a8b-4fda-a95b-4e17a76a9f1a"
+                    billId: null
+                    demandDetailsId: "88cf2cdb-b218-4cf3-a6c2-5a2d693e8087"
+                    taxHead: "BILLING_TAX"
+                    taxAmount: 30.00
+                    collectionAmount: 30.00
+                    auditDetails:
+                      createdBy: "thejaswini1@gmail.com"
+                      lastModifiedBy: "thejaswini1@gmail.com"
+                      createdTime: 1723623565002
+                      lastModifiedTime: 1723623713267
+
+  /payment/_create:
+    post:
+      tags:
+        - Payment Management
+      summary: Create Payment
+      description: |
+        This api is responsible for payment creation based on bill id. Here the  amount to be paid  will be same as the bill 
+                        amount. 
+
+        
+        ### Attribute Explanations:
+        * **id**: The unique internal identifier for the payment record.
+        * **billId**: Links this payment back to the specific bill being settled.
+        * **receiptNo**: The official document number generated for the consumer's records.
+        * **paymentMode**: The method of payment (e.g., CASH, ONLINE, CHEQUE).
+        * **amountPaid**: The actual currency value received.
+        * **dueAmount**: The remaining balance after this payment (0 indicates full settlement).
+        * **status**: The current state of the payment (e.g., PAID, DEPOSITED, CANCELLED).
+      operationId: createPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              requestInfo:
+                authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+              paymentDto:
+                billId: "00eafd70-c0db-4192-af3c-11d833b57514"
+                paymentMode: "CASH"
+                amountPaid: 0.6
+      responses:
+        '201':
+          description: Payment created successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                id: "e4ac3a9b-df7f-4837-bf7a-46397ac9b245"
+                billId: "00eafd70-c0db-4192-af3c-11d833b57514"
+                consumerCode: "IND-2024-08-22-00084"
+                businessService: "IND-2024-08-22-00084"
+                receiptNo: "RECEIPT-2024-08-22-00012"
+                paymentDate: 1724301707441
+                userUuid: "4701662a-5c3b-4a5e-b1bd-2d7d32f6b7f4"
+                transactionNo: null
+                paymentMode: "CASH"
+                amountPaid: 0.6
+                dueAmount: 0
+                status: "PAID"
+                filestoreId: null
+                auditDetails:
+                  createdBy: "rajni@gmail.com"
+                  lastModifiedBy: "rajni@gmail.com"
+                  createdTime: 1724301707447
+                  lastModifiedTime: 1724301707447
+
+  /payment/_search:
+    post:
+      tags:
+        - Payment Management
+      summary: Search Payments
+      description: |
+        Retrieves a list of payment records based on search criteria. This endpoint provides deep nesting of the associated bill and tax details.
+        
+        ### Key Attributes:
+        * **receiptNo**: The unique identifier for the transaction proof.
+        * **paymentMode**: Method used (e.g., CASH, ONLINE).
+        * **bill**: A nested object containing the original bill details that this payment settled.
+        * **billDetails**: Located inside the bill object, this array breaks down exactly which tax heads (e.g., BILLING_TAX) were covered.
+        * **collectionAmount**: The amount allocated specifically to a single tax head.
+      operationId: searchPayments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              requestInfo:
+                authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+              paymentSearchCriteria:
+                consumerCode: "IND-2024-08-22-00084"
+                tenantId: "pb.amritsar"
+      responses:
+        '200':
+          description: List of payments found.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+              example:
+                - id: "e4ac3a9b-df7f-4837-bf7a-46397ac9b245"
+                  billId: "00eafd70-c0db-4192-af3c-11d833b57514"
+                  consumerCode: "IND-2024-08-22-00084"
+                  businessService: "IND-2024-08-22-00084"
+                  receiptNo: "RECEIPT-2024-08-22-00012"
+                  paymentDate: 1724301707441
+                  userUuid: "4701662a-5c3b-4a5e-b1bd-2d7d32f6b7f4"
+                  transactionNo: null
+                  paymentMode: "CASH"
+                  amountPaid: 0.60
+                  dueAmount: 0.00
+                  status: "PAID"
+                  filestoreId: null
+                  auditDetails:
+                    createdBy: "rajni@gmail.com"
+                    lastModifiedBy: "rajni@gmail.com"
+                    createdTime: 1724301707447
+                    lastModifiedTime: 1724301707447
+                  bill:
+                    id: "00eafd70-c0db-4192-af3c-11d833b57514"
+                    demandId: "f3a43ac9-4cef-4899-bf85-186b9b17db33"
+                    consumerCode: "IND-2024-08-22-00084"
+                    userUuid: "4701662a-5c3b-4a5e-b1bd-2d7d32f6b7f4"
+                    billNo: "BILL-2024-08-22-00051"
+                    billDate: 1724297268310
+                    businessService: "IND-2024-08-22-00084"
+                    totalAmount: 0.60
+                    status: "PAID"
+                    auditDetails:
+                      createdBy: "rajni@gmail.com"
+                      lastModifiedBy: "rajni@gmail.com"
+                      createdTime: 1724297268328
+                      lastModifiedTime: 1724301707472
+                    billDetails:
+                      - id: "2621e24a-23b6-41f5-bab0-5683684c37cc"
+                        billId: 
+                          id: "00eafd70-c0db-4192-af3c-11d833b57514"
+                          billNo: "BILL-2024-08-22-00051"
+                        demandDetailsId: "39c630df-87d9-4ea7-aae2-c4f8b3c789b1"
+                        taxHead: "BILLING_TAX"
+                        taxAmount: 0.60
+                        collectionAmount: 0.60
+                        auditDetails:
+                          createdBy: "rajni@gmail.com"
+                          lastModifiedBy: "rajni@gmail.com"
+                          createdTime: 1724297268328
+                          lastModifiedTime: 1724301707472
+
+  /payment/_downloadReceipt:
+    post:
+      tags:
+        - Payment Management
+      summary: Download Payment Receipt
+      description: Fetches the PDF receipt from the File Store using the receipt number.
+      operationId: downloadReceipt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              example:
+                requestInfo:
+                  authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                receiptNo: "RECEIPT-2024-08-22-00012"
+      responses:
+        '200':
+          description: PDF Receipt file retrieved successfully.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary

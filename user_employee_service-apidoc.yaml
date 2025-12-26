@@ -1,0 +1,3109 @@
+openapi: 3.0.1
+info:
+  title: Platform User Service API
+  description: |
+    **Service Name:** pf-user-service
+    **Port:** 8079
+    
+    This service handles:
+    1. **User Management:** Registration, activation, searching, and updating users.
+    2. **Authentication:** Login, 2FA, OTP handling, and Token validation.
+    3. **Employee Services:** specialized creation and management of employee records.
+    
+    **Common Standards:**
+    - Every request must include a `RequestInfo` object containing the `authToken` and `userInfo` context.
+    - `userInfo` contains `selectedTenantId` and `selectedRoleIds` to handle multi-tenancy.
+  version: v1.0.0
+servers:
+  - url: http://localhost:8079/pf-user-service
+    description: User Service Local Environment
+tags:
+  - name: User Controller
+    description: Core user lifecycle operations (Create, Search, Update, Delete).
+  - name: Auth Controller
+    description: Login, Logout, Token Validation, and Password Management.
+  - name: Employee Controller
+    description: Employee specific operations including bulk uploads.
+
+paths:
+  /user/registration/_create:
+    post:
+      tags:
+        - User Controller
+      summary: Register New User (Step 1)
+      description: |
+        This API is responsible for registration of users in the system. 
+        After validation of all user details, it triggers Mobile OTP and EMail OTP. 
+        The response includes a `token` which must be used in the subsequent 
+        `/user/registration/_verifyOtp` call to finalize the registration.
+      operationId: registerUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserDto'
+            examples:
+              exampleRequest:
+                value:
+                  firstName: "User"
+                  middleName: "Doe"
+                  lastName: "YR"
+                  phoneNo: "0196-133-750"
+                  altPhoneNo: "237-124-1110"
+                  emailId: "user2@example.com"
+                  username: "user2"
+                  password: "@Bstc123"
+                  gender: "M"
+                  address1: "Banglore"
+                  address2: "Tumkur"
+                  city: "Banglore"
+                  zip: "567432"
+                  state: "Karnataka"
+                  userStatusNote: "hello"
+        required: true
+      responses:
+        "200":
+          description: OTP Sent Successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              examples:
+                successResponse:
+                  value:
+                    mobileOtpVerified: false
+                    emailOtpVerified: false
+                    token: "007032fd-0b51-4dd9-872b-450178250220"
+                    message: "Otp sent successfully"
+                    messageCode: "OTP_SENT"
+  /user/registration/_verifyOtp:
+    post:
+      tags:
+        - User Controller
+      summary: Verify Registration OTP (Step 2)
+      description: |
+        This API is responsible for verifying the OTP (Mobile and/or Email) 
+        and permanently saving the user details to the system. 
+        It requires the `token` received from the initial `_create` call.
+        
+        Note: The API supports verifying only Mobile or only Email OTPs, depending 
+        on which methods are enabled for the user (as shown in the response examples).
+      operationId: verifyRegistrationOtp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpRequest'
+            examples:
+              verifyBothOtp:
+                summary: Verify Both Mobile and Email OTPs
+                value:
+                  mobileOtp: "1234"
+                  emailOtp: "1234"
+                  token: "007032fd-0b51-4dd9-872b-450178250220"
+              verifyMobileOnly:
+                summary: Verify Mobile OTP Only
+                value:
+                  mobileOtp: "1234"
+                  token: "007032fd-0b51-4dd9-872b-450178250220"
+        required: true
+      responses:
+        "200":
+          description: OTP Verified, User Registered (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpResponse'
+              examples:
+                successfulVerification:
+                  summary: Successful Verification of Both
+                  value:
+                    mobileOtpVerified: true
+                    emailOtpVerified: true
+                    token: "007032fd-0b51-4dd9-872b-450178250220"
+                    message: "User registered successfully after otp verification"
+                    messageCode: "OTP_VERIFIED"
+                mobileOnlyVerification:
+                  summary: Successful Mobile OTP Verification
+                  value:
+                    mobileOtpVerified: true
+                    emailOtpVerified: false
+                    token: "007032fd-0b51-4dd9-872b-450178250220"
+                    message: "Mobile Otp verified"
+  /user/activation/_activate:
+    post:
+      tags:
+        - User Controller
+      summary: Activate Existing User (Init)
+      description: |
+        This API is responsible for initiating activation of existing users whose `active` attribute is currently `false`. 
+        Activation is completed only after successful OTP verification via `/user/activation/_verifyOtp`.
+        
+        **Note on Request Parameters:**
+        The server uses a configuration parameter (`activation.userId.type`) to determine which single field (USERNAME, EMAIL, or PHNO) is required for the request. Only one of these should typically be provided.
+      operationId: activateUserInit
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivateDto'
+            examples:
+              exampleRequest:
+                summary: Activation Request (Providing all fields)
+                value:
+                  phoneNo: "0196-133-750"
+                  emailId: "user2@example.com"
+                  username: "user2"
+                  password: "@Bstc123"
+        required: true
+      responses:
+        "200":
+          description: OTP Sent Successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              examples:
+                successResponse:
+                  summary: OTP Sent
+                  value:
+                    mobileOtpVerified: false
+                    emailOtpVerified: false
+                    token: "007032fd-0b51-4dd9-872b-450178250220"
+                    message: "Otp sent successfully"
+                    messageCode: "OTP_SENT"
+        "400":
+          description: Bad Request (Validation or User Not Found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingUsername:
+                  summary: Error - Missing Required Field (Username)
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Provide the username."
+                    errors: null
+                incorrectUsername:
+                  summary: Error - Incorrect Username
+                  value:
+                    code: "USERNAME_NOT_FOUND"
+                    message: "Provide correct Username."
+                    errors: null
+                missingEmail:
+                  summary: Error - Missing Required Field (Email)
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Provide the Email ID."
+                    errors: null
+                incorrectEmail:
+                  summary: Error - Incorrect Email
+                  value:
+                    code: "EMAIL_NOT_FOUND"
+                    message: "Provide correct Email Id."
+                    errors: null
+                missingPhoneNo:
+                  summary: Error - Missing Required Field (Phone No)
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Provide the Phone no."
+                    errors: null
+                incorrectPhoneNo:
+                  summary: Error - Incorrect Phone No
+                  value:
+                    code: "PH_NO_NOT_FOUND"
+                    message: "Provide correct Phone no."
+                    errors: null
+  
+  # START OF NEW PATH
+  /user/activation/_verifyOtp:
+    post:
+      tags:
+        - User Controller
+      summary: Verify Activation OTP and Activate User
+      description: |
+        This API is responsible for verifying OTPs, after which the respective user is marked as active.
+        It requires the `token` received from the initial `_activate` call.
+        
+        **Note on Verification Status:**
+        1. If mobileOtp is disabled: Response shows "mobileOtpVerified": false, "emailOtpVerified": true.
+        2. If emailOtp is disabled: Response shows "mobileOtpVerified": true, "emailOtpVerified": false.
+        3. If both the mobileOtp and emailOtp are enabled: Response shows "mobileOtpVerified": true, "emailOtpVerified": true.
+        
+      operationId: verifyActivationOtp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpRequest'
+            examples:
+              exampleRequest:
+                summary: Verification Request (Email OTP Only)
+                value:
+                  emailOtp: "1234"
+                  token: "007032fd-0b51-4dd9-872b-450178250220"
+        required: true
+      responses:
+        "200":
+          description: OTP Verified, User Activated (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpResponse'
+              examples:
+                successfulVerification:
+                  summary: Successful Email OTP Verification (Mobile disabled)
+                  value:
+                    mobileOtpVerified: false 
+                    emailOtpVerified: true
+                    token: "007032fd-0b51-4dd9-872b-450178250220"
+                    message: "Otp verified successfully"
+                    messageCode: "OTP_VERIFIED"
+                successfulVerificationBoth:
+                  summary: Successful Verification of Both OTPs
+                  value:
+                    mobileOtpVerified: true 
+                    emailOtpVerified: true
+                    token: "007032fd-0b51-4dd9-872b-450178250220"
+                    message: "Otp verified successfully"
+                    messageCode: "OTP_VERIFIED"
+        "400":
+          description: Bad Request (Invalid OTP or Token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidEmailOtp:
+                  summary: Invalid Email OTP
+                  value:
+                    code: "INVALID_EMAIL_OTP"
+                    message: "Incorrect email otp"
+                    errors: null
+                emailOtpRequired:
+                  summary: Email OTP Required
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Email Otp is required"
+                    errors: null
+                invalidMobileOtp:
+                  summary: Invalid Mobile OTP
+                  value:
+                    code: "INVALID_MOBILE_OTP"
+                    message: "Incorrect mobile otp"
+                    errors: null
+                mobileOtpRequired:
+                  summary: Mobile OTP Required
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Mobile Otp is required"
+                    errors: null
+                partialOtpVerified:
+                  summary: Only one OTP verified when both are required
+                  value:
+                    code: "PARTIAL_OTP_VERIFIED"
+                    message: "Both OTPs must be verified"
+                    errors: null
+                bothOtpsRequired:
+                  summary: Both OTPs required and neither provided
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Both Mobile and Email Otps are required"
+                    errors: null
+                otpVerificationFailed:
+                  summary: Generic failure when both are required and one is incorrect
+                  value:
+                    code: "OTP_VERIFIED_FAILED"
+                    message: "Check both the OTPs."
+                    errors: null
+                invalidToken:
+                  summary: Empty or Expired Token
+                  value:
+                    code: "INVALID_TOKEN"
+                    message: "Token was invalid or expired"
+                    errors: null
+                genericFailure:
+                  summary: Any other exception
+                  value:
+                    code: "OTP_VERIFICATION_FAILED"
+                    message: "Otp verification failed. Please try again later."
+                    errors: null
+  /auth/2FA/_authenticate:
+    post:
+      tags:
+        - Auth Controller
+      summary: Authentication with 2FA Initiation
+      description: |
+        Authenticates the user using username and password. If credentials are valid, 
+        it initiates delivery of Mobile and Email OTPs for Two-Factor Authentication (2FA).
+        The returned `token` is required for the subsequent verification step via `auth/2FA/_verifyOtp`.
+      operationId: authenticate2FA
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserAuthDto'
+            examples:
+              authenticationRequest:
+                value:
+                  username: "user"
+                  password: "@Bstc123"
+                  selectedTenantName: "CITIZENS"
+        required: true
+      responses:
+        "200":
+          description: OTP Sent Successfully for 2FA (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              examples:
+                otpSentResponse:
+                  value:
+                    mobileOtpVerified: false
+                    emailOtpVerified: false
+                    token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                    message: "Otp sent successfully"
+                    messageCode: "OTP_SENT"  
+  /auth/2FA/_verifyOtp:
+    post:
+      tags:
+        - Auth Controller
+      summary: Verify 2FA OTP and Complete Authentication
+      description: |
+        This API is responsible for verifying the Mobile and/or Email OTPs initiated during the 
+        `auth/2FA/_authenticate` call. 
+        
+        Upon successful verification, the user is fully authenticated, and the response returns 
+        the final authentication token along with the user and tenant/role details.
+        The required OTP fields depend on system configurations (if mobile or email OTP is enabled).
+      operationId: verify2FAOtp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpRequest'
+            examples:
+              successfulVerification:
+                value:
+                  mobileOtp: "1234"
+                  emailOtp: "1234"
+                  token: "007032fd-0b51-4dd9-872b-450178250220"
+        required: true
+      responses:
+        "200":
+          description: User Authenticated Successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponseDto'
+              examples:
+                successfulAuthentication:
+                  value:
+                    token: "007032fd-0b51-4dd9-872b-450178250220"
+                    userDetails:
+                      uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                      firstName: "PRINCIPAL"
+                      lastName: "TEST"
+                      username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                    selectedTenantId: "COLLEGE"
+                    selectedRoleIds:
+                      - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                    message: "User authenticated successfully"
+                    messageCode: "AUTHENTICATION_SUCCESSFUL"
+        "400":
+          description: Bad Request (Invalid OTP or Token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              # Note: Standard error examples from the previous verification endpoint apply here.
+  
+  /user/_create:
+    post:
+      tags:
+        - User Controller
+      summary: Create New User (Direct)
+      description: |
+        This API is responsible for the direct creation of users in the system by an administrator or privileged process. 
+        Unlike the registration flow, this bypasses the OTP verification process and directly creates an active (or inactive, based on business logic) user record with associated tenant and role mappings.
+      operationId: createUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserDto'
+            examples:
+              exampleRequest:
+                value:
+                  firstName: "User"
+                  middleName: "Doe"
+                  lastName: "YR"
+                  phoneNo: "1196-133-750"
+                  altPhoneNo: "237-124-1110"
+                  emailId: "user@example.com"
+                  username: "user"
+                  password: "@Bstc123"
+                  gender: "M"
+                  address1: "Banglore"
+                  address2: "Tumkur"
+                  city: "Banglore"
+                  zip: "567432"
+                  state: "Karnataka"
+                  userStatusNote: "hello"
+        required: true
+      responses:
+        "201":
+          description: User Created Successfully (HttpStatus.CREATED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedUserResponse'
+              examples:
+                successfulCreation:
+                  value:
+                    user:
+                      uuid: "1d766e6a-2abd-4476-a22a-975f3ef02626"
+                      firstName: "User"
+                      middleName: "Doe"
+                      lastName: "YR"
+                      phoneNo: "1196-133-750"
+                      altPhoneNo: "237-124-1110"
+                      emailId: "user@example.com"
+                      username: "user"
+                      failedAttempts: 0
+                      isDeleted: false
+                      user2TenantMap:
+                        - uuid: "cc159700-5bf4-40b3-8d36-0f060ebb5521"
+                          tenant:
+                            uuid: "ba53533c-13d6-4240-bbf9-ab5700e6b8df"
+                            name: "PF_ORG"
+                            description: "test"
+                            auditDetails:
+                              createdBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                              lastModifiedBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                              createdTime: 1719202034140
+                              lastModifiedTime: 1719202034140
+                      user2RoleMap:
+                        - uuid: "de63454f-a3bd-49cf-a6fe-aa0686b76b8f"
+                          role:
+                            uuid: "a7a520cd-96cc-45d2-8cc8-737f114fc697"
+                            name: "PF_USER"
+                            description: "Platform Default User"
+                            path: "pf_tenant.pf_user"
+                            type: "USER"
+                            parentRole:
+                              uuid: "1febe8c3-eb7a-45c6-a263-664d1e803d78"
+                              name: "PF_ORG"
+                              description: "Platform Default Tenant"
+                              path: "pf_tenant"
+                              type: "TENANT"
+                              auditDetails:
+                                createdBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                                lastModifiedBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                                createdTime: 1719202033804
+                                lastModifiedTime: 1719202033804
+                            auditDetails:
+                              createdBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                              lastModifiedBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                              createdTime: 1719202034375
+                              lastModifiedTime: 1719202034375
+                      gender: "M"
+                      address1: "Tumkur"
+                      address2: "Tumkur"
+                      city: "Banglore"
+                      state: "Karnataka"
+                      zip: "567432"
+                      userStatusNote: "hello"
+                      isActive: false
+                      auditDetails:
+                        createdBy: " "
+                        lastModifiedBy: " "
+                        createdTime: 1719304744824
+                        lastModifiedTime: 1719304744824
+                    message: "User created successfully"
+                    messageCode: "CREATED_SUCCESSFULLY"
+  /user/_bulkCreateUserData:
+    post:
+      tags:
+        - User Controller
+      summary: Bulk Creation of Users from Excel Sheet
+      description: |
+        This API is responsible for creating or updating users in bulk by processing an uploaded Excel file.
+
+        **Action Types:**
+        1. `DELETE_AND_UPDATE`: Removes existing users from the database (non-test users, or test users if `delete_test_users` is true) and then creates new ones from the file.
+        2. `UPDATE`: Updates existing users or creates them if they are not already in the database.
+      operationId: bulkCreateUserData
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkCreateUserRequest'
+            encoding:
+              file:
+                contentType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+        required: true
+      responses:
+        "200":
+          description: Bulk user creation/update process initiated successfully.
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/BulkCreateStatus'
+  /user/_search:
+    post:
+      tags:
+        - User Controller
+      summary: Search Users
+      description: This API searches for users based on various criteria (UUID, name, contact info, roles, tenants). It supports pagination via `count` and `offset`.
+      operationId: searchUsers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserSearchDto'
+            examples:
+              searchByUuid:
+                value:
+                  requestInfo:
+                    authToken: "007032fd-0b51-4dd9-872b-450178250220"
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  uuid: "6b3ae53b-39c0-4a38-a264-adcb0623581c"
+              searchByNameAndPagination:
+                value:
+                  requestInfo:
+                    # ... (omitted RequestInfo structure for brevity)
+                  firstName: "Theju"
+                  count: 10
+                  offset: 0
+        required: true
+      responses:
+        "200":
+          description: A list of users matching the search criteria.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserDetail'
+              examples:
+                successfulSearch:
+                  value:
+                    - uuid: "6b3ae53b-39c0-4a38-a264-adcb0623581c"
+                      firstName: "Theju"
+                      middleName: "YR"
+                      lastName: "Smith"
+                      phoneNo: "1156-231-758"
+                      emailId: "thejuyr2@example.com"
+                      username: "thejuyr2"
+                      # ... (omitted rest of UserDetail for brevity)
+  /user/_update:
+    post:
+      tags:
+        - User Controller
+      summary: Update User Details
+      description: |
+        This API is responsible for updating an existing user's details, including personal information and role/tenant assignments.
+        
+        Note: When updating roles and tenants (`selectedRoleDetails` and `selectedTenantDetails`), only the `id` and `name` fields are required/expected for each entry.
+      operationId: updateUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateDto'
+            examples:
+              exampleRequest:
+                value:
+                  token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                  userDetails:
+                    uuid: "6b3ae53b-39c0-4a38-a264-adcb0623581c"
+                    firstName: "User"
+                    middleName: "YR"
+                    lastName: "Smith"
+                    phoneNo: "1156-231-758"
+                    emailId: "user@example.com"
+                    username: "user"
+                    gender: "M"
+                    address1: "Tumkur"
+                    city: "Banglore"
+                    zip: "567432"
+                  selectedTenant:
+                    id: "PF_ORG"
+                    name: "PF_ORG"
+                    description: "test"
+                  selectedRoleDetails:
+                    - id: "PF_ORG.PF_USER"
+                      name: "PF_USER"
+                    - id: "CITIZEN"
+                      name: "CITIZEN"
+                  selectedTenantDetails:
+                    - id: "PF_ORG"
+                      name: "PF_ORG"
+                    - id: "DRIVER"
+                      name: "DRIVER"
+        required: true
+      responses:
+        "200":
+          description: User updated successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatedUserResponse'
+              examples:
+                successfulUpdate:
+                  value:
+                    user:
+                      uuid: "6b3ae53b-39c0-4a38-a264-adcb0623581c"
+                      firstName: "user"
+                      lastName: "Smith"
+                      username: "user"
+                      phoneNo: "1156-231-758"
+                      # ... (rest of UserDetail)
+                    message: "User was updated successfully"
+                    messageCode: "UPDATED_SUCCESSFULLY"
+  /user/_delete:
+    post:
+      tags:
+        - User Controller
+      summary: Delete User
+      description: |
+        This API is responsible for the soft-deletion (logical delete) of a user in the system. 
+        The request payload is the generic `RequestDto` which carries the caller's authentication 
+        context (`authToken` and `userInfo`) and identifies the target user via `userInfo.userDetails.uuid`.
+      operationId: deleteUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestDto'
+            examples:
+              exampleRequest:
+                value:
+                  authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                  userInfo:
+                    userDetails:
+                      uuid: "136e6072-4d7b-42f6-9299-feabe8a85f30"
+                      firstName: "PRINCIPAL"
+                      lastName: "TEST"
+                      username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                      phoneNo: "3683601601"
+                      emailId: "test_cplx_hr_subordinate@example.com"
+                    selectedTenantId: "COLLEGE"
+                    selectedRoleIds:
+                      - "UNIVERSITY.COLLEGE.PRINCIPAL"
+        required: true
+      responses:
+        "200":
+          description: User deleted successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDeleteResponse'
+              examples:
+                successfulDelete:
+                  value:
+                    success: true
+                    message: "User was deleted successfully"
+                    messageCode: "DELETED_SUCCESSFULLY"
+  /auth/_authenticate:
+    post:
+      tags:
+        - Auth Controller
+      summary: Basic User Authentication
+      description: |
+        Checks if the provided username and password match. If successful and 2FA is not required, it returns the final access token and user details.
+        
+        Note: The request body structure corresponds to `UserAuthDto`. The `selectedTenantRoleName` parameter is required if the user belongs to multiple tenants to resolve the context.
+      operationId: basicAuthenticate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserAuthDto'
+            examples:
+              authenticationRequest:
+                value:
+                  username: "user"
+                  password: "@Bstc123"
+                  selectedTenantRoleName: "CITIZENS"
+        required: true
+      responses:
+        "200":
+          description: User authenticated successfully (ResponseEntity.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationResponse'
+              examples:
+                successfulAuthentication:
+                  value:
+                    token: "007032fd-0b51-4dd9-872b-450178250220"
+                    userDetails:
+                      uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                      firstName: "PRINCIPAL"
+                      lastName: "TEST"
+                      username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                    selectedTenantId: "COLLEGE"
+                    selectedRoleIds:
+                      - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                    mobileOtpRequired: false
+                    emailOtpRequired: false
+                    maskedMobileNumber: null
+                    maskedEmailId: null
+                    message: "User authenticated successfully"
+                    messageCode: "AUTHENTICATION_SUCCESSFUL"
+                    idleTimeout: 120
+        "400":
+          description: Invalid input (e.g., missing selectedTenantRoleName for multi-tenant users)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingTenantRoleName:
+                  value:
+                    code: "INVALID_INPUT"
+                    message: "selectedTenantRoleName expected in the request. User belongs to multiple tenants at different levels"
+                    errors: {}
+  /auth/_validateToken:
+    post:
+      tags:
+        - Auth Controller
+      summary: Validate Access Token
+      description: |
+        Used by service consumers (like Filestore) to validate an access token. 
+        It returns the user's complete context (user details, selected tenant/roles, and session information) upon successful validation.
+      operationId: validateToken
+      requestBody:
+        content:
+          application/json:
+            # Although the documentation refers to RequestDto, the payload structure matches a specialized DTO.
+            schema:
+              $ref: '#/components/schemas/ValidateTokenRequest'
+            examples:
+              validateTokenRequest:
+                value:
+                  requestInfo:
+                    authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+        required: true
+      responses:
+        "200":
+          description: Token validated successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                # Reusing the detailed response schema from the authenticate API as the structure is identical.
+                $ref: '#/components/schemas/AuthenticationResponse'
+              examples:
+                successfulValidation:
+                  value:
+                    token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                    userDetails:
+                      uuid: "76fffaf4-8706-4fbb-8075-9e44d4671dde"
+                      firstName: "PRINCIPAL"
+                      lastName: "TEST"
+                      username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                    selectedTenantId: "COLLEGE"
+                    selectedRoleIds:
+                      - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                    mobileOtpRequired: false
+                    emailOtpRequired: false
+                    maskedMobileNumber: null
+                    maskedEmailId: null
+                    message: "Token validated successfully."
+                    messageCode: "VALIDATION_SUCCESSFUL"
+                    idleTimeout: 0
+  /auth/_selectTenant:
+    post:
+      tags:
+        - Auth Controller
+      summary: Multiple tenant selection
+      description: This API is responsible for selecting a specific tenant for an authenticated user session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              token: "007032fd-0b51-4dd9-872b-450178250220"
+              tenantId: "COLLEGE"
+      responses:
+        '200':
+          description: User authenticated successfully
+          content:
+            application/json:
+              example:
+                token: "007032fd-0b51-4dd9-872b-450178250220"
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                mobileOtpRequired: false
+                emailOtpRequired: false
+                maskedMobileNumber: null
+                maskedEmailId: null
+                message: "User authenticated successfully"
+                messageCode: "AUTHENTICATION_SUCCESSFUL"
+                idleTimeout: 120
+  /auth/_logout:
+    post:
+      tags:
+        - Auth Controller
+      summary: User Logout
+      description: |
+        Invalidates the user's current session token (authToken) to log them out of the system.
+      operationId: logout
+      requestBody:
+        content:
+          application/json:
+            # Matches the structure of the RequestInfo object.
+            schema:
+              $ref: '#/components/schemas/RequestInfoWrapper'
+            examples:
+              logoutRequest:
+                value:
+                  requestInfo:
+                    authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+        required: true
+      responses:
+        "200":
+          description: User logged out successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+              examples:
+                successfulLogout:
+                  value:
+                    success: true
+                    message: "User was logged out successfully"
+                    messageCode: "LOG_OUT_SUCCESSFULLY"
+  /auth/adminResetPassword/reset:
+    post:
+      tags:
+        - Auth Controller
+      summary: Admin Password Reset to Default
+      description: |
+        This API allows an administrator to reset a specified user's password back to a system-defined default password. 
+        It does not require the current password, only the username of the target account.
+      operationId: adminResetPassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminResetPasswordRequest'
+            examples:
+              adminResetRequest:
+                value:
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+        required: true
+      responses:
+        "200":
+          description: Password reset successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              examples:
+                successfulReset:
+                  value:
+                    message: "Password reset successfully"
+                    messageCode: "PASSWORD_RESET_SUCCESSFUL"
+  /auth/adminResetPassword/update:
+    post:
+      tags:
+        - Auth Controller
+      summary: Update Password after Admin Reset
+      description: |
+        This API is used by a user (after their password has been reset to default by an administrator) 
+        to set a new password. It requires a valid, one-time-use token (usually sent via email/SMS after the admin reset) 
+        and the new desired password, which must be confirmed.
+      operationId: updatePasswordAfterAdminReset
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordUpdateAfterAdminResetRequest'
+            examples:
+              passwordUpdateRequest:
+                value:
+                  token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                  newPassword: "@Bstc123"
+                  confirmPassword: "@Bstc123"
+        required: true
+      responses:
+        "200":
+          description: Password updated successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              examples:
+                successfulUpdate:
+                  value:
+                    success: true
+                    message: "Password Updated Successfully"
+                    messageCode: "PASSWORD_UPDATED"
+        "400":
+          description: Invalid Input or Token Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidToken:
+                  value:
+                    code: "INVALID_TOKEN"
+                    message: "Token was invalid or expired"
+                    errors: null
+                passwordMismatch:
+                  value:
+                    code: "PASSWORD_MISMATCHED"
+                    message: "Entered Password Not Matched"
+                    errors: null
+  /auth/common/_getOtp:
+    post:
+      tags:
+        - Auth Controller
+      summary: Request One-Time Password (OTP)
+      description: |
+        This API is responsible for generating and sending an OTP (One-Time Password) to the specified user's 
+        mobile number and/or email address. This is typically the first step in a 2FA (Two-Factor Authentication) or 
+        passwordless flow.
+      operationId: getOtp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetOtpRequest'
+            examples:
+              otpRequest:
+                value:
+                  phoneNo: "1156-231-758"
+                  emailId: "thejuyr2@example.com"
+        required: true
+      responses:
+        "200":
+          description: OTP sent successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOtpResponse'
+              examples:
+                successfulOtpSend:
+                  value:
+                    mobileOtpVerified: false
+                    emailOtpVerified: false
+                    token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                    message: "Otp sent successfully"
+                    messageCode: "OTP_SENT"
+  /auth/common/_verifyOtp:
+    post:
+      tags:
+        - Auth Controller
+      summary: Verify One-Time Password (OTP)
+      description: |
+        This API verifies the OTP(s) provided by the user (mobile and/or email) against the temporary token generated by `_getOtp`. 
+        If successful, it validates the user's identity for the subsequent operation (e.g., login, password reset, or registration).
+        
+        Note: If `emailId` and `phoneNo` are included in the request, the service verifies that the OTP was sent against those specific contact details and the associated token. If they are omitted, validation is done only against the token and the provided OTP(s).
+      operationId: verifyOtp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOtpRequest'
+            examples:
+              otpVerificationRequest:
+                value:
+                  mobileOtp: "1234"
+                  emailOtp: "1234"
+                  emailId: "abcd@gmail.com"
+                  phoneNo: "9999999999"
+                  token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+        required: true
+      responses:
+        "200":
+          description: OTP verified successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyOtpResponse'
+              examples:
+                successfulVerification:
+                  value:
+                    mobileOtpVerified: true
+                    emailOtpVerified: true
+                    token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                    message: "User registered successfully after otp verification"
+                    messageCode: "OTP_VERIFIED"
+  /auth/common/_resendOtp:
+    post:
+      tags:
+        - Auth Controller
+      summary: Resend One-Time Password (OTP)
+      description: |
+        This API resends the existing, active OTP (or generates a new one if the previous one expired) 
+        to the mobile number and email address associated with the provided temporary token. 
+        It is used when a user fails to receive the OTP initially.
+      operationId: resendOtp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendOtpRequest'
+            examples:
+              resendOtpRequest:
+                value:
+                  token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+        required: true
+      responses:
+        "200":
+          description: OTP resent successfully (HttpStatus.OK)
+          content:
+            application/json:
+              # Reusing the response schema from the _getOtp endpoint as the structure is identical.
+              schema:
+                $ref: '#/components/schemas/GetOtpResponse'
+              examples:
+                successfulResend:
+                  value:
+                    mobileOtpVerified: false
+                    emailOtpVerified: false
+                    token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                    message: "Otp sent successfully"
+                    messageCode: "OTP_SENT"
+  /user/forgotPassword/_getOtp:
+    post:
+      tags:
+        - User Controller
+      summary: Request OTP for Forgot Password
+      description: |
+        This is the first step in the "Forgot Password" two-screen process. 
+        It generates and sends an OTP (One-Time Password) to the user's registered mobile number and/or email address, 
+        identified by the contact details provided in the request body.
+        A temporary token is returned for use in the subsequent verification step.
+      operationId: forgotPasswordGetOtp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordGetOtpRequest'
+            examples:
+              forgotPasswordOtpRequest:
+                value:
+                  phoneNo: "1156-231-758"
+                  emailId: "thejuyr2@example.com"
+        required: true
+      responses:
+        "200":
+          description: OTP sent successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgotPasswordOtpResponse'
+              examples:
+                successfulOtpSend:
+                  value:
+                    mobileOtpVerified: false
+                    emailOtpVerified: false
+                    token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                    message: "Otp sent successfully"
+                    messageCode: "OTP_SENT"
+  /user/forgotPassword/_verifyOtp:
+    post:
+      tags:
+        - User Controller
+      summary: Verify OTP and Update Password (Forgot Password - Step 2)
+      description: |
+        This is the second and final step in the "Forgot Password" process. 
+        It verifies the OTP sent in the previous step (`_getOtp`) using the temporary token, 
+        and if verification is successful, it updates the user's password to the new one provided.
+      operationId: forgotPasswordVerifyOtpAndUpdate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordVerifyAndUpdateRequest'
+            examples:
+              forgotPasswordVerifyAndUpdateRequest:
+                value:
+                  token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                  otp: "1234"
+                  password: "NewPassword@25"
+        required: true
+      responses:
+        "200":
+          description: OTP verified and Password updated successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                # Reusing the generic success response schema
+                $ref: '#/components/schemas/SuccessResponse'
+              examples:
+                successfulPasswordUpdate:
+                  value:
+                    success: true
+                    message: "Password Updated Successfully"
+                    messageCode: "PASSWORD_UPDATED"
+  /user/forgotPassword_v2/_getOtp:
+    post:
+      tags:
+        - User Controller
+      summary: Request OTP for Forgot Password (V2 - Step 1 of 3)
+      description: |
+        This is the first step in the three-screen "Forgot Password V2" flow. 
+        It accepts a user identifier (phoneNo, emailId, or username, based on backend configuration) 
+        and initiates the OTP generation and delivery process. A temporary token is returned for the subsequent steps.
+        
+        Configuration: The fields accepted in the request are controlled by the following application properties:
+        * forgotPassword_v2.otp.getOtp.acceptEmail=true
+        * forgotPassword_v2.otp.getOtp.acceptPhoneNo=true
+        * forgotPassword_v2.otp.getOtp.acceptUsername=true
+      operationId: forgotPasswordV2GetOtp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordV2GetOtpRequest'
+            examples:
+              forgotPasswordV2OtpRequest:
+                value:
+                  phoneNo: "1156-231-758"
+                  emailId: "thejuyr2@example.com"
+                  username: "thejuyr2"
+        required: true
+      responses:
+        "200":
+          description: OTP sent successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgotPasswordV2OtpResponse'
+              examples:
+                successfulOtpSend:
+                  value:
+                    token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                    message: "Otp sent successfully"
+                    messageCode: "OTP_SENT"
+  /user/forgotPassword_v2/_verifyOtp:
+    post:
+      tags:
+        - User Controller
+      summary: Verify OTP for Forgot Password (V2 - Step 2 of 3)
+      description: |
+        This is the second step in the three-screen "Forgot Password V2" flow. 
+        It verifies the OTP provided by the user against the temporary token generated in the `_getOtp` step. 
+        A successful verification allows the user to proceed to the third step: setting a new password.
+      operationId: forgotPasswordV2VerifyOtp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordV2VerifyOtpRequest'
+            examples:
+              forgotPasswordV2VerifyOtpRequest:
+                value:
+                  token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                  otp: "1234"
+        required: true
+      responses:
+        "200":
+          description: OTP verified successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgotPasswordV2VerifyOtpResponse'
+              examples:
+                successfulVerification:
+                  value:
+                    token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                    message: "Otp verified."
+                    messageCode: "OTP_VERIFIED"
+  /user/forgotPassword_v2/_updatePassword:
+    post:
+      tags:
+        - User Controller
+      summary: Update Password (Forgot Password V2 - Step 3 of 3)
+      description: |
+        This is the third and final step in the three-screen "Forgot Password V2" flow. 
+        It uses the validated token from the `_verifyOtp` step to securely update the user's password 
+        to the new password provided in the request body.
+      operationId: forgotPasswordV2UpdatePassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordV2UpdateRequest'
+            examples:
+              forgotPasswordV2UpdateRequest:
+                value:
+                  token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                  confirmPassword: "abcd"
+                  newPassword: "abcd"
+        required: true
+      responses:
+        "200":
+          description: Password updated successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                # Reusing the generic success response schema
+                $ref: '#/components/schemas/SuccessResponse'
+              examples:
+                successfulPasswordUpdate:
+                  value:
+                    success: true
+                    message: "Password updated successfully."
+                    messageCode: "PASSWORD_UPDATE_SUCCESS"
+  /employee/_createV1:
+    post:
+      tags:
+        - Employee Controller
+      summary: Bulk Employee Creation (V1)
+      description: |
+        This API facilitates the bulk creation of employee accounts from a list of registration details (`registrationDto`). 
+        It requires the authentication context of the user (admin/principal) performing the creation via `requestInfo`.
+        
+        The API handles scenarios where some users already exist or fail validation, reporting the status for each.
+      operationId: createEmployeeV1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkRegistrationRequest'
+            examples:
+              bulkEmployeeCreationRequest:
+                value:
+                  requestInfo:
+                    authToken: "007032fd-0b51-4dd9-872b-450178250220"
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  registrationDto:
+                    - firstName: "Test"
+                      lastName: "User"
+                      phoneNo: "778-666-5541"
+                      emailId: "test.user1@example.com"
+                      password: "@Bstc123"
+                      lgdCode: "KA000"
+                    - firstName: "Test Test"
+                      lastName: "User"
+                      phoneNo: "7410852096"
+                      emailId: "test.user2@example.com"
+                      password: "@Bstc123"
+                      lgdCode: "KA000"
+        required: true
+      responses:
+        "201":
+          description: Users processed with status report (HttpStatus.CREATED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeResponseDto'
+              examples:
+                successfulBulkCreation:
+                  value:
+                    totalUsersSentForCreation: 2
+                    totalUsersNotCreated: 0
+                    totalUsersCreated: 1
+                    usersCreated:
+                      - firstName: "Test Test"
+                        lastName: "User"
+                        phoneNo: "7410852096"
+                        emailId: "test.user2@example.com"
+                        lgdCode: "KA000"
+                        creationDescription: "Creation completed successfully."
+                    usersCreationFailed: []
+                    totalExistingUsers: 1
+                    existingUserDetails:
+                      - firstName: "Test"
+                        lastName: "User"
+                        phoneNo: "778-666-5541"
+                        emailId: "test.user1@example.com"
+                        lgdCode: "KA000"
+  /employee/_bulkCreateV2:
+    post:
+      tags:
+        - Employee Controller
+      summary: Bulk User Creation from Excel Sheet (V2)
+      description: |
+        This API handles the bulk creation/update of users (enumerators, supervisors, employees) 
+        by consuming data from an uploaded Excel file (`MultipartFile`). The operation is controlled by `actionType` 
+        and an optional flag for deleting test users.
+      operationId: bulkCreateV2
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkCreationV2Request'
+            examples:
+              bulkCreationV2Request:
+                value:
+                  requestInfo:
+                    '{"authToken":"46279677-92fd-4f08-bd74-fb24216ca4d8","userInfo":{"userDetails":{"uuid":"c4934b91-126a-4783-8f04-323026f7ba23","firstName":"Grampanchayat","lastName":"Lastname","username":"9999999982"},"selectedTenantId":"MIN-KNK-BAT-BDM-BDM-AAA-215148","selectedRoleIds":["MINISTRY.STATE.DISTRICT.SUB_DISTRICT.DEV_BLOCK.GRAM_PANCHAYAT.ADMIN"]}}'
+                  file: <binary>
+                  actionType: "DELETE_AND_UPDATE"
+                  delete_test_users: "false" # Default/optional
+        required: true
+      parameters:
+        - name: actionType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - DELETE_AND_UPDATE
+              - UPDATE
+          description: Defines the operation mode (DELETE_AND_UPDATE or UPDATE).
+        - name: delete_test_users
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "false"
+            enum:
+              - "true"
+              - "false"
+          description: Optional flag to indicate whether test users should be deleted before creation.
+      responses:
+        "201":
+          description: Bulk operation processed with status report (HttpStatus.CREATED)
+          content:
+            application/json:
+              # Reusing the response DTO from _createV1
+              schema:
+                $ref: '#/components/schemas/EmployeeResponseDto'
+              examples:
+                successfulBulkProcessing:
+                  value:
+                    totalUsersSentForCreation: 1
+                    totalUsersNotCreated: 0
+                    totalUsersCreated: 0
+                    usersCreated: []
+                    usersCreationFailed: []
+                    totalExistingUsers: 1
+                    existingUserDetails:
+                      - firstName: "Test"
+                        lastName: "User"
+                        phoneNo: "7894561320"
+                        emailId: "test.user@gmail.com"
+                        lgdCode: "KA100"
+  /employee/_bulkCreateEnumSprvsrV1:
+    post:
+      tags:
+        - Employee Controller
+      summary: Bulk Creation of Enumerators and Supervisors from Macro Excel (V1)
+      description: |
+        This API handles the bulk creation/update of specific user types (Enumerators and Supervisors) 
+        by consuming data from a macro-enabled Excel file (`MultipartFile`). The operation is controlled by `actionType` 
+        and an optional flag for deleting test users. This endpoint is dedicated to the creation of Enumerator and Supervisor roles.
+      operationId: bulkCreateEnumSprvsrV1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkCreationV2Request' # Reusing the schema structure for multipart file upload
+            examples:
+              bulkCreationRequest:
+                value:
+                  requestInfo:
+                    authToken: "6a201777-65a3-43df-8f32-6b514b22c7ef"
+                    userInfo:
+                      userDetails:
+                        uuid: "9f73b3d8-1bea-43c0-a4a6-c8ffd283d81a"
+                        firstName: "Grampanchayat"
+                        lastName: "Lastname"
+                        username: "9999999982"
+                      selectedTenantId: "MIN-KNK-BUA-HAT-HST-BRR-215475"
+                      selectedRoleIds:
+                        - "MINISTRY.STATE.DISTRICT.SUB_DISTRICT.DEV_BLOCK.GRAM_PANCHAYAT.ADMIN"
+                  file: <binary>
+                  actionType: "UPDATE"
+                  delete_test_users: "false"
+        required: true
+      parameters:
+        - name: actionType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - DELETE_AND_UPDATE
+              - UPDATE
+          description: Defines the operation mode (DELETE_AND_UPDATE or UPDATE). DELETE_AND_UPDATE removes existing Enumerators/Supervisors before creating new ones.
+        - name: delete_test_users
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "false"
+            enum:
+              - "true"
+              - "false"
+          description: Optional flag to indicate whether Test Users should be deleted before creation.
+      responses:
+        "201":
+          description: Bulk operation processed with status report (HttpStatus.CREATED)
+          content:
+            application/json:
+              # Reusing the response DTO from previous bulk creation endpoints
+              schema:
+                $ref: '#/components/schemas/EmployeeResponseDto'
+              examples:
+                successfulBulkProcessing:
+                  value:
+                    totalUsersSentForCreation: 1
+                    totalUsersNotCreated: 0
+                    totalUsersCreated: 0
+                    usersCreated: []
+                    usersCreationFailed: []
+                    totalExistingUsers: 1
+                    existingUserDetails:
+                      - firstName: "Test"
+                        lastName: "User"
+                        phoneNo: "7894561320"
+                        emailId: "test.user@gmail.com"
+                        lgdCode: "KA100"
+  /employee/_bulkCreateAdminsV1:
+    post:
+      tags:
+        - Employee Controller
+      summary: Bulk Creation of All Admin Users from Macro Excel (V1)
+      description: |
+        This API handles the bulk creation/update of Admin users across various levels (All Admins) 
+        by consuming data from a macro-enabled Excel file (`MultipartFile`). 
+        The operation is controlled by `actionType` and an optional flag for deleting test users.
+      operationId: bulkCreateAdminsV1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkCreationV2Request' # Reusing the schema structure for multipart file upload
+            examples:
+              bulkCreationRequest:
+                value:
+                  requestInfo:
+                    authToken: "6a201777-65a3-43df-8f32-6b514b22c7ef"
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  file: <binary>
+                  actionType: "DELETE_AND_UPDATE"
+                  delete_test_users: "false" # Default/optional
+        required: true
+      parameters:
+        - name: actionType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - DELETE_AND_UPDATE
+              - UPDATE
+          description: Defines the operation mode. DELETE_AND_UPDATE removes existing employees before creating new ones.
+        - name: delete_test_users
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "false"
+            enum:
+              - "true"
+              - "false"
+          description: Optional flag to indicate whether Test Users should be deleted before creation.
+      responses:
+        "201":
+          description: Bulk operation processed with status report (HttpStatus.CREATED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeResponseDto'
+              examples:
+                successfulBulkProcessing:
+                  value:
+                    totalUsersSentForCreation: 3
+                    totalUsersNotCreated: 0
+                    totalUsersCreated: 0
+                    usersCreated: []
+                    usersCreationFailed: []
+                    totalExistingUsers: 3
+                    existingUserDetails:
+                      - firstName: "Test"
+                        lastName: "User"
+                        phoneNo: "7735237007"
+                        emailId: "test.user1@gmail.com"
+                        lgdCode: "KA100"
+                      - firstName: "Test"
+                        lastName: "Test"
+                        phoneNo: "7700553366"
+                        emailId: "test.user2@gmail.com"
+                        lgdCode: "KA100"
+                      - firstName: "Test Test"
+                        lastName: "User"
+                        phoneNo: "7788554411"
+                        emailId: "test.user3@gmail.com"
+                        lgdCode: "KA100"
+                invalidDataFormat:
+                  value:
+                    totalUsersSentForCreation: 1
+                    totalUsersNotCreated: 0
+                    totalUsersCreated: 0
+                    usersCreated: []
+                    usersCreationFailed:
+                      - firstName: "Test"
+                        lastName: "User"
+                        phoneNo: "+"
+                        emailId: "test.user1@gmail.com"
+                        lgdCode: "KA000"
+                        creationDescription: "Invalid phone number format"
+                    totalExistingUsers: 0
+                    existingUserDetails: []
+        "400":
+          description: Invalid Excel Template (Bad Request)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidExcelTemplate:
+                  value:
+                    code: "INVALID_INPUT"
+                    message: "Invalid Excel template. Expected headers: [First Name, Last Name, Phone No, Email ID, LGD Code]"
+                    errors: {}
+  /employee/_update:
+    post:
+      tags:
+        - Employee Controller
+      summary: Update Employee's LGD Code Association
+      description: |
+        This API is responsible for updating the association between a specific employee (user) 
+        and a new LGD (Local Government Directory) code. This is typically used to re-allot survey areas or 
+        jurisdictions to field workers or administrators.
+      operationId: updateEmployeeLGD
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeUpdateLGDRequest'
+            examples:
+              employeeUpdateLGDRequest:
+                value:
+                  requestInfo:
+                    authToken: "d4755057-561b-4eea-af2b-e18c9818e138"
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  allotmentDto:
+                    uuid: "6a201777-65a3-43df-8f32-6b514b22c7ef"
+                    userUuid: "9b5043ef-ba0c-4e49-8d73-85a369492da9"
+                    lgdCode: "215148"
+        required: true
+      responses:
+        "200":
+          description: Employee's LGD code association updated successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeLGDUpdateResponse'
+              examples:
+                successfulUpdate:
+                  value:
+                    uuid: "6a201777-65a3-43df-8f32-6b514b22c7ef"
+                    userDetails:
+                      uuid: "9b5043ef-ba0c-4e49-8d73-85a369492da9"
+                      firstName: "Test1"
+                      lastName: "Test"
+                      phoneNo: "7894651323"
+                      emailId: "test1@gmail.com"
+                      username: "test1@gmail.com"
+                      failedAttempts: 0
+                      isDeleted: false
+                      isActive: false
+                    lgd_code: "215148"
+                    auditDetails:
+                      createdBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                      lastModifiedBy: "d4755057-561b-4eea-af2b-e18c9818e138"
+                      createdTime: 1758621822717
+                      lastModifiedTime: 1758771886296
+  /employee/_search:
+    post:
+      tags:
+        - Employee Controller
+      summary: Search Employees
+      description: |
+        This API is responsible for searching and retrieving a list of employee records based on various 
+        search criteria provided in the `searchDto` (e.g., name, contact details, or LGD code).
+      operationId: searchEmployees
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeSearchRequest'
+            examples:
+              employeeSearchByFirstName:
+                summary: Search by First Name
+                value:
+                  requestInfo:
+                    authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                    userInfo:
+                      userDetails:
+                        uuid: "ebdfd603-d031-4150-bffb-4e595866071b"
+                      selectedTenantId: "PF_ORG"
+                      selectedRoleIds:
+                        - "PF_ADMIN"
+                  searchDto:
+                    firstName: "Test"
+              employeeSearchByMultipleCriteria:
+                summary: Search by Multiple Criteria
+                value:
+                  requestInfo:
+                    authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                    userInfo:
+                      userDetails:
+                        uuid: "ebdfd603-d031-4150-bffb-4e595866071b"
+                      selectedTenantId: "PF_ORG"
+                      selectedRoleIds:
+                        - "PF_ADMIN"
+                  searchDto:
+                    phoneNo: "7410852096"
+                    lgdCode: "215346"
+        required: true
+      responses:
+        "200":
+          description: List of employees matching the search criteria (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Employee'
+              examples:
+                successfulSearch:
+                  value:
+                    - uuid: "9d097f48-c273-4402-83bc-487111373a4a"
+                      user_uuid:
+                        uuid: "1685daca-97ef-452a-a903-f0e09efad035"
+                        firstName: "Test"
+                        lastName: "Test"
+                        phoneNo: "7894651323"
+                        emailId: "test@gmail.com"
+                        username: "test@gmail.com"
+                        failedAttempts: 0
+                        auditDetails:
+                          createdBy: " "
+                          lastModifiedBy: " "
+                          createdTime: 1737455855786
+                          lastModifiedTime: 1737455855786
+                        isDeleted: false
+                        isActive: false
+                      lgd_code: "KA000"
+                      auditDetails:
+                        createdBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                        lastModifiedBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                        createdTime: 1737455855889
+                        lastModifiedTime: 1737455855889
+  /employee/_register:
+    post:
+      tags:
+        - Employee Controller
+      summary: Initiate Employee Registration/Activation with OTP
+      description: |
+        This API starts the employee registration or account activation process. It validates the user's provided credentials 
+        (phone number, email ID, or username) against existing records and sends an OTP to the associated contact detail 
+        for verification.
+        
+        Note: The required activation parameter (USERNAME / EMAIL / PHNO) is determined by the backend configuration (`activation.param`). 
+        Only the configured parameter must be provided.
+      operationId: registerEmployee
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivateDto'
+            examples:
+              registrationRequest:
+                value:
+                  phoneNo: "0196-133-750"
+                  emailId: "user2@example.com"
+                  username: "user2"
+                  password: "@Bstc123"
+        required: true
+      responses:
+        "200":
+          description: OTP sent successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpResponse'
+              examples:
+                successfulOtpSend:
+                  value:
+                    mobileOtpVerified: false
+                    emailOtpVerified: false
+                    token: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                    message: "Otp sent successfully"
+                    messageCode: "OTP_SENT"
+        "400":
+          description: Required field missing or incorrect credential provided.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingUsername:
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Provide the username."
+                    errors: {}
+                missingEmailId:
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Provide the Email ID."
+                    errors: {}
+                missingPhoneNo:
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Provide the Phone no."
+                    errors: {}
+                usernameNotFound:
+                  value:
+                    code: "USERNAME_NOT_FOUND"
+                    message: "Provide correct Username."
+                    errors: {}
+                emailNotFound:
+                  value:
+                    code: "EMAIL_NOT_FOUND"
+                    message: "Provide correct Email Id."
+                    errors: {}
+                phoneNoNotFound:
+                  value:
+                    code: "PH_NO_NOT_FOUND"
+                    message: "Provide correct Phone no."
+                    errors: {}
+  /employee/_registerVerifyOtp:
+    post:
+      tags:
+        - Employee Controller
+      summary: Verify OTPs and Complete Employee Registration/Password Reset
+      description: |
+        This API verifies the One-Time Passwords (OTPs) sent to the employee's contact details 
+        (mobile and/or email) using the temporary token generated in the registration step (`employee/_register`). 
+        Successful verification completes the activation process or allows a password reset.
+        The required OTPs depend on the backend configuration (whether mobile, email, or both are enabled).
+      operationId: registerVerifyOtp
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpRequest'
+            examples:
+              verificationRequest:
+                value:
+                  emailOtp: "1234"
+                  token: "007032fd-0b51-4dd9-872b-450178250220"
+        required: true
+      responses:
+        "200":
+          description: OTP verified successfully (HttpStatus.OK)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpResponse' # Reusing the OtpResponse schema
+              examples:
+                successfulVerificationEmailOnly:
+                  summary: Email OTP verified successfully (Mobile Disabled)
+                  value:
+                    mobileOtpVerified: false
+                    emailOtpVerified: true
+                    token: "007032fd-0b51-4dd9-872b-450178250220"
+                    message: "Otp verified successfully"
+                    messageCode: "OTP_VERIFIED"
+                successfulVerificationBoth:
+                  summary: Both OTPs verified successfully
+                  value:
+                    mobileOtpVerified: true
+                    emailOtpVerified: true
+                    token: "007032fd-0b51-4dd9-872b-450178250220"
+                    message: "Otp verified successfully"
+                    messageCode: "OTP_VERIFIED"
+        "400":
+          description: Verification failure due to incorrect OTP, missing fields, or invalid token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidEmailOtp:
+                  value:
+                    code: "INVALID_EMAIL_OTP"
+                    message: "Incorrect email otp"
+                    errors: null
+                requiredEmailOtp:
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Email Otp is required"
+                    errors: null
+                invalidMobileOtp:
+                  value:
+                    code: "INVALID_MOBILE_OTP"
+                    message: "Incorrect mobile otp"
+                    errors: null
+                requiredMobileOtp:
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Mobile Otp is required"
+                    errors: null
+                partialOtpVerified:
+                  value:
+                    code: "PARTIAL_OTP_VERIFIED"
+                    message: "Both OTPs must be verified"
+                    errors: null
+                requiredBothOtps:
+                  value:
+                    code: "REQUIRED_FIELD"
+                    message: "Both Mobile and Email Otps are required"
+                    errors: null
+                otpVerificationFailed:
+                  value:
+                    code: "OTP_VERIFIED_FAILED"
+                    message: "Check both the OTPs."
+                    errors: null
+                invalidToken:
+                  value:
+                    code: "INVALID_TOKEN"
+                    message: "Token was invalid or expired"
+                    errors: null
+                genericFailure:
+                  value:
+                    code: "OTP_VERIFICATION_FAILED"
+                    message: "Otp verification failed. Please try again later."
+                    errors: null
+components:
+  schemas:
+    # --- Activation & Registration DTOs ---
+    ActivateDto:
+      type: object
+      description: Activation request data. Only one of phoneNo, emailId, or username may be required based on configuration.
+      properties:
+        phoneNo:
+          type: string
+          description: Phone number of the user.
+        emailId:
+          type: string
+          format: email
+          description: Email ID of the user.
+        username:
+          type: string
+          description: Username of the user.
+        password:
+          type: string
+          format: password
+          description: User's password (may be required for authentication prior to OTP).
+
+    # --- Audit & Metadata Schemas ---
+    AuditDetails:
+      type: object
+      description: Metadata regarding creation and modification of the record.
+      properties:
+        createdBy:
+          type: string
+        lastModifiedBy:
+          type: string
+        createdTime:
+          type: integer
+          format: int64
+          description: Unix timestamp of creation time in milliseconds.
+        lastModifiedTime:
+          type: integer
+          format: int64
+          description: Unix timestamp of last modification time in milliseconds.
+
+    # --- Authentication & Authorization Schemas ---
+    AuthUserDetail:
+      type: object
+      description: Basic details of the authenticated user sending the request.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        username:
+          type: string
+        phoneNo:
+          type: string
+        emailId:
+          type: string
+          format: email
+
+    RequestInfo:
+      type: object
+      description: Standard header object containing authentication and user context information.
+      properties:
+        authToken:
+          type: string
+        userInfo:
+          $ref: '#/components/schemas/UserInfo'
+
+    UserInfo:
+      type: object
+      description: Contextual information about the authenticated user for the request.
+      properties:
+        userDetails:
+          $ref: '#/components/schemas/AuthUserDetail'
+        selectedTenantId:
+          type: string
+        selectedRoleIds:
+          type: array
+          items:
+            type: string
+
+    UserAuthDto:
+      required:
+        - password
+        - username
+      type: object
+      description: DTO for user authentication (Login).
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        selectedTenantName:
+          type: string
+          description: The selected tenant name for multi-tenancy context.
+        selectedTenantRoleName:
+          type: string
+          description: The role name selected in the tenant.
+        captchaText:
+          type: string
+        captchaToken:
+          type: string
+          
+    UserResponseDto:
+      # REDEFINITION: Updated to match the full authentication/tenant selection response structure.
+      type: object
+      description: Final response returned upon successful authentication or tenant selection.
+      properties:
+        token:
+          type: string
+          description: The final authentication token.
+        userDetails:
+          $ref: '#/components/schemas/AuthUserDetail'
+        selectedTenantId:
+          type: string
+          description: The ID of the currently selected tenant/organization.
+        selectedRoleIds:
+          type: array
+          description: The list of roles the user has within the selected tenant.
+          items:
+            type: string
+        mobileOtpRequired:
+          type: boolean
+          description: Indicates if a mobile OTP is required for further access.
+        emailOtpRequired:
+          type: boolean
+          description: Indicates if an email OTP is required for further access.
+        maskedMobileNumber:
+          type: string
+          nullable: true
+          description: Masked mobile number if OTP is required/sent.
+        maskedEmailId:
+          type: string
+          nullable: true
+          description: Masked email ID if OTP is required/sent.
+        message:
+          type: string
+        messageCode:
+          type: string
+        idleTimeout:
+          type: integer
+          format: int32
+          description: The session idle timeout in seconds.
+    # --- Bulk Creation Schemas ---
+    BulkCreateStatus:
+      type: object
+      description: Generic status response for the bulk creation operation.
+      properties:
+        message:
+          type: string
+          example: "Bulk user data creation request accepted."
+        messageCode:
+          type: string
+          example: "BULK_CREATE_ACCEPTED"
+
+    BulkCreateUserRequest:
+      type: object
+      description: Request payload for initiating a bulk user creation/update process via file upload.
+      properties:
+        file:
+          type: string
+          format: binary
+          description: The Excel file (e.g., user_creation_template.xlsx) containing the user data.
+        actionType:
+          type: string
+          description: Defines the action to perform on existing data.
+          enum:
+            - "DELETE_AND_UPDATE"
+            - "UPDATE"
+        delete_test_users:
+          type: boolean
+          description: |
+            'true' indicates test user instances should be deleted before creation/update. 
+            'false' indicates test user instances should be retained.
+      required:
+        - file
+        - actionType
+        - delete_test_users
+
+    # --- Error Schemas ---
+    ErrorResponse:
+      type: object
+      description: Common structure for all API error responses.
+      properties:
+        code:
+          type: string
+          description: A unique, system-defined error code.
+        message:
+          type: string
+          description: A human-readable message describing the error.
+        errors:
+          type: array
+          description: Detailed list of field-level errors or null if not applicable.
+          nullable: true
+          items:
+            type: object
+            description: Placeholder for specific field validation error details.
+
+    # --- OTP Response Schemas ---
+    OtpRequest:
+      type: object
+      description: Request payload for verifying one or both OTPs.
+      required:
+        - token
+      properties:
+        mobileOtp:
+          type: string
+          description: The OTP received on the mobile number.
+        emailOtp:
+          type: string
+          description: The OTP received on the email address.
+        token:
+          type: string
+          description: The temporary token received from the initial authentication/registration call.
+
+    OtpResponse:
+      type: object
+      description: Response indicating the status of the OTP verification(s) for registration or activation.
+      properties:
+        mobileOtpVerified:
+          type: boolean
+          description: True if the mobile OTP was successfully verified.
+        emailOtpVerified:
+          type: boolean
+          description: True if the email OTP was successfully verified.
+        token:
+          type: string
+          description: The temporary token (usually returned unchanged).
+        message:
+          type: string
+        messageCode:
+          type: string
+
+    RegisterResponse:
+      type: object
+      description: Response returned after initiating registration, activation, or 2FA authentication (OTP sent successfully).
+      properties:
+        mobileOtpVerified:
+          type: boolean
+          description: Always 'false' at this step, indicating mobile OTP is pending verification.
+        emailOtpVerified:
+          type: boolean
+          description: Always 'false' at this step, indicating email OTP is pending verification.
+        token:
+          type: string
+          description: Temporary token required for verifying OTPs.
+        message:
+          type: string
+        messageCode:
+          type: string
+
+    # --- Role & Tenant Schemas ---
+    ParentRoleDetail:
+      type: object
+      description: The parent role (usually a Tenant role) of a given user role.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        path:
+          type: string
+        type:
+          type: string
+          enum: [ "TENANT" ]
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+
+    RoleDetail:
+      type: object
+      description: Detailed information about a role.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        path:
+          type: string
+        type:
+          type: string
+          enum: [ "USER", "TENANT" ]
+        parentRole:
+          $ref: '#/components/schemas/ParentRoleDetail'
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+          
+    TenantDetail:
+      type: object
+      description: Detailed information about a tenant.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        code:
+          type: string
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+
+    # --- User Search DTO ---
+    UserSearchDto:
+      type: object
+      description: Request payload for searching users, including `RequestInfo` and search criteria.
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+        uuid:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        middleName:
+          type: string
+        lastName:
+          type: string
+        phoneNo:
+          type: string
+        altPhoneNo:
+          type: string
+        emailId:
+          type: string
+          format: email
+        username:
+          type: string
+        roleIds:
+          type: array
+          description: List of role IDs to search for.
+          items:
+            type: string
+        tenantIds:
+          type: array
+          description: List of tenant IDs to search users within.
+          items:
+            type: string
+        count:
+          type: integer
+          format: int32
+          description: The number of records to return (page size).
+        offset:
+          type: integer
+          format: int32
+          description: The starting position for fetching records (page number offset).
+
+    # --- User Creation, Detail, and Relationship Schemas ---
+    CreatedUserResponse:
+      type: object
+      description: Response returned after a user has been successfully created via the direct `_create` API.
+      properties:
+        user:
+          $ref: '#/components/schemas/UserDetail'
+        message:
+          type: string
+        messageCode:
+          type: string
+
+    UserDetail:
+      type: object
+      description: Detailed DTO of a user, including system metadata and relationships (used for response lists).
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        middleName:
+          type: string
+        lastName:
+          type: string
+        phoneNo:
+          type: string
+        altPhoneNo:
+          type: string
+        emailId:
+          type: string
+          format: email
+        username:
+          type: string
+        failedAttempts:
+          type: integer
+          format: int32
+        isDeleted:
+          type: boolean
+        isActive:
+          type: boolean
+        gender:
+          type: string
+        address1:
+          type: string
+        address2:
+          type: string
+        city:
+          type: string
+        zip:
+          type: string
+        state:
+          type: string
+        userStatusNote:
+          type: string
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+        user2TenantMap:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserTenantMap'
+        user2RoleMap:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserRoleMap'
+
+    UserDto:
+      type: object
+      description: Data Transfer Object containing all details for a new user creation/registration.
+      properties:
+        firstName:
+          type: string
+        middleName:
+          type: string
+        lastName:
+          type: string
+        phoneNo:
+          type: string
+        altPhoneNo:
+          type: string
+        emailId:
+          type: string
+          format: email
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+          description: Password must meet system complexity requirements.
+        gender:
+          type: string
+        address1:
+          type: string
+        address2:
+          type: string
+        city:
+          type: string
+        zip:
+          type: string
+        state:
+          type: string
+        userStatusNote:
+          type: string
+          
+    UserRoleMap:
+      type: object
+      description: Mapping of a user to a specific role within a tenant structure.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/RoleDetail'
+
+    UserTenantMap:
+      type: object
+      description: Mapping of a user to a tenant.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        tenant:
+          $ref: '#/components/schemas/TenantDetail'
+
+    # --- User Update DTOs ---
+    RoleUpdateSelectionDetail:
+      type: object
+      description: Minimal role details (id and name) required for update request bodies.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    TenantUpdateSelectionDetail:
+      type: object
+      description: Minimal tenant details required for update request bodies.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          description: Description is optional in the request body but included in the example.
+
+    UpdatedUserResponse:
+      type: object
+      description: Response returned after a user has been successfully updated.
+      properties:
+        user:
+          $ref: '#/components/schemas/UserDetail'
+        message:
+          type: string
+        messageCode:
+          type: string
+
+    UserUpdateBodyDetail:
+      type: object
+      description: The core user data fields for the update request.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        middleName:
+          type: string
+        lastName:
+          type: string
+        phoneNo:
+          type: string
+        altPhoneNo:
+          type: string
+        emailId:
+          type: string
+          format: email
+        username:
+          type: string
+        failedAttempts:
+          type: integer
+          format: int32
+        isDeleted:
+          type: boolean
+        gender:
+          type: string
+        address1:
+          type: string
+        address2:
+          type: string
+        city:
+          type: string
+        zip:
+          type: string
+        state:
+          type: string
+        userStatusNote:
+          type: string
+
+    UserUpdateDto:
+      type: object
+      description: Main request DTO for updating a user.
+      properties:
+        token:
+          type: string
+          description: Authentication token of the user performing the update (may be null/ignored if API is protected by another mechanism).
+        userDetails:
+          $ref: '#/components/schemas/UserUpdateBodyDetail'
+        selectedTenant:
+          $ref: '#/components/schemas/TenantUpdateSelectionDetail'
+          description: The primary tenant associated with the user.
+        selectedRoleDetails:
+          type: array
+          description: List of roles to be assigned/updated for the user.
+          items:
+            $ref: '#/components/schemas/RoleUpdateSelectionDetail'
+        selectedTenantDetails:
+          type: array
+          description: List of tenants to be associated/updated for the user.
+          items:
+            $ref: '#/components/schemas/RoleUpdateSelectionDetail'
+    RequestDto:
+      # Defined as RequestDto to match the provided documentation (@RequestBody RequestDto).
+      # Its structure matches the RequestInfo DTO already used for consistency in the service.
+      type: object
+      description: Generic request DTO used for user management operations requiring authentication context.
+      properties:
+        authToken:
+          type: string
+          description: The authentication token of the caller/admin.
+        userInfo:
+          $ref: '#/components/schemas/UserInfo'
+          description: Contextual information of the user performing the operation. For deletion, the user to be deleted is identified via `userDetails.uuid` inside this object.
+      required:
+        - authToken
+        - userInfo
+    UserDeleteResponse:
+      type: object
+      description: Standard response structure for a successful user deletion.
+      properties:
+        success:
+          type: boolean
+          description: Indicates if the operation was successful.
+        message:
+          type: string
+        messageCode:
+          type: string
+    AuthenticationResponse:
+      type: object
+      description: Response returned after successful user authentication when 2FA is not required.
+      properties:
+        token:
+          type: string
+          description: The final authentication token.
+        userDetails:
+          $ref: '#/components/schemas/AuthUserDetail'
+        selectedTenantId:
+          type: string
+          description: The ID of the currently selected tenant/organization.
+        selectedRoleIds:
+          type: array
+          description: The list of roles the user has within the selected tenant.
+          items:
+            type: string
+        mobileOtpRequired:
+          type: boolean
+          description: Indicates if a mobile OTP is required for 2FA. (Typically false for this basic auth endpoint).
+        emailOtpRequired:
+          type: boolean
+          description: Indicates if an email OTP is required for 2FA. (Typically false for this basic auth endpoint).
+        maskedMobileNumber:
+          type: string
+          nullable: true
+          description: Masked mobile number if OTP is required/sent.
+        maskedEmailId:
+          type: string
+          nullable: true
+          description: Masked email ID if OTP is required/sent.
+        message:
+          type: string
+        messageCode:
+          type: string
+        idleTimeout:
+          type: integer
+          format: int32
+          description: The session idle timeout in seconds.
+    ValidateTokenRequest:
+      type: object
+      description: Request DTO for validating an authentication token.
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/AuthTokenOnlyRequestInfo'
+          description: Contains the access token to be validated.
+      required:
+        - requestInfo
+
+    AuthTokenOnlyRequestInfo:
+      type: object
+      description: Minimal structure containing only the authToken required for validation endpoints.
+      properties:
+        authToken:
+          type: string
+          description: The access token to be validated.
+      required:
+        - authToken
+    UserTenantSelectionAuthDto:
+      required:
+        - tenantId
+        - token
+      type: object
+      description: DTO for selecting a specific tenant context after initial authentication.
+      properties:
+        token:
+          type: string
+          description: The temporary authentication token received from a prior authentication step.
+        tenantId:
+          type: string
+          description: The ID of the tenant the user wishes to select.
+    RequestInfoWrapper:
+      type: object
+      description: Wrapper DTO for the requestInfo object, used where the API expects the authToken to be nested under requestInfo.
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/AuthTokenOnlyRequestInfo'
+          description: Contains the access token to be invalidated.
+      required:
+        - requestInfo
+
+    LogoutResponse:
+      type: object
+      description: Standard response structure for a successful logout operation.
+      properties:
+        success:
+          type: boolean
+          description: Indicates if the operation was successful.
+        message:
+          type: string
+        messageCode:
+          type: string
+    AdminResetPasswordRequest:
+      type: object
+      description: Request DTO for resetting a user's password by an administrator.
+      properties:
+        username:
+          type: string
+          description: The username of the user whose password is to be reset.
+      required:
+        - username
+
+    MessageResponse:
+      type: object
+      description: Generic response for operations that only return a success message.
+      properties:
+        message:
+          type: string
+        messageCode:
+          type: string
+    PasswordUpdateAfterAdminResetRequest:
+      type: object
+      description: Request DTO for setting a new password using a temporary token, typically after an admin-triggered reset.
+      properties:
+        token:
+          type: string
+          description: The one-time-use token received for password update.
+        newPassword:
+          type: string
+          description: The user's desired new password.
+        confirmPassword:
+          type: string
+          description: Confirmation of the new password (must match `newPassword`).
+      required:
+        - token
+        - newPassword
+        - confirmPassword
+    SuccessResponse:
+      type: object
+      description: Generic response for operations that indicate success with a boolean flag, message, and message code.
+      properties:
+        success:
+          type: boolean
+          description: True if the operation succeeded.
+        message:
+          type: string
+        messageCode:
+          type: string
+    GetOtpRequest:
+      type: object
+      description: Request DTO for requesting an OTP, identifying the user via phone number and/or email.
+      properties:
+        phoneNo:
+          type: string
+          description: The user's phone number to send the mobile OTP to.
+          nullable: true
+        emailId:
+          type: string
+          description: The user's email ID to send the email OTP to (mandatory as per example).
+      required:
+        - emailId
+
+    GetOtpResponse:
+      type: object
+      description: Response returned after successfully initiating the OTP delivery process. Contains a temporary token.
+      properties:
+        mobileOtpVerified:
+          type: boolean
+          description: Always false immediately after requesting OTP.
+        emailOtpVerified:
+          type: boolean
+          description: Always false immediately after requesting OTP.
+        token:
+          type: string
+          description: A temporary token required for the subsequent OTP verification step.
+        message:
+          type: string
+        messageCode:
+          type: string
+    VerifyOtpRequest:
+      type: object
+      description: Request DTO for verifying the OTP(s).
+      properties:
+        mobileOtp:
+          type: string
+          description: The OTP received on the mobile number (required if mobile OTP was sent).
+        emailOtp:
+          type: string
+          description: The OTP received on the email ID (required if email OTP was sent).
+        emailId:
+          type: string
+          description: The email ID against which the OTP was sent (optional, but recommended for full validation).
+          nullable: true
+        phoneNo:
+          type: string
+          description: The phone number against which the OTP was sent (optional, but recommended for full validation).
+          nullable: true
+        token:
+          type: string
+          description: The temporary token received from the `_getOtp` endpoint.
+      required:
+        - token
+
+    VerifyOtpResponse:
+      type: object
+      description: Response returned after successful OTP verification.
+      properties:
+        mobileOtpVerified:
+          type: boolean
+          description: True if the mobile OTP was successfully verified.
+        emailOtpVerified:
+          type: boolean
+          description: True if the email OTP was successfully verified.
+        token:
+          type: string
+          description: The token, usually now upgraded or maintained for the next step (e.g., final login or password change).
+        message:
+          type: string
+        messageCode:
+          type: string
+    ResendOtpRequest:
+      type: object
+      description: Request DTO for requesting resend of OTP, identified by the temporary token.
+      properties:
+        token:
+          type: string
+          description: The temporary token received from the `_getOtp` endpoint, identifying the user's session and associated contact details.
+      required:
+        - token
+    ForgotPasswordGetOtpRequest:
+      type: object
+      description: Request DTO for initiating the forgot password flow by requesting an OTP.
+      properties:
+        phoneNo:
+          type: string
+          description: The user's registered phone number.
+          nullable: true
+        emailId:
+          type: string
+          description: The user's registered email ID.
+          nullable: true
+      required:
+        # Assuming at least one contact method (phoneNo or emailId) is required for the service to identify the user.
+
+    ForgotPasswordOtpResponse:
+      type: object
+      description: Response returned after successfully initiating the Forgot Password OTP process.
+      properties:
+        mobileOtpVerified:
+          type: boolean
+          description: Always false at this stage.
+        emailOtpVerified:
+          type: boolean
+          description: Always false at this stage.
+        token:
+          type: string
+          description: A temporary token required for the subsequent OTP verification and password update steps.
+        message:
+          type: string
+        messageCode:
+          type: string
+    ForgotPasswordVerifyAndUpdateRequest:
+      type: object
+      description: Request DTO for verifying OTP and setting a new password in the forgot password flow.
+      properties:
+        token:
+          type: string
+          description: The temporary token received from the `user/forgotPassword/_getOtp` endpoint.
+        otp:
+          type: string
+          description: The OTP code entered by the user (can be mobile or email OTP, depending on implementation).
+        password:
+          type: string
+          description: The user's desired new password.
+      required:
+        - token
+        - otp
+        - password
+    ForgotPasswordV2GetOtpRequest:
+      type: object
+      description: Request DTO for initiating the 3-step forgot password flow, identifying the user via any of the listed fields.
+      properties:
+        phoneNo:
+          type: string
+          description: The user's registered phone number.
+          nullable: true
+        emailId:
+          type: string
+          description: The user's registered email ID.
+          nullable: true
+        username:
+          type: string
+          description: The user's registered username.
+          nullable: true
+      # At least one field (phoneNo, emailId, or username) is typically required by the service logic, 
+      # but OpenAPI doesn't enforce 'oneOf' easily, so we rely on the service to validate based on enabled properties.
+
+    BulkRegistrationRequest:
+      type: object
+      description: DTO containing the request context and an array of employee registration details.
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfoWithUserInfo' # Assumed DTO for nested RequestInfo/UserInfo
+        registrationDto:
+          type: array
+          description: List of employee details to be created.
+          items:
+            $ref: '#/components/schemas/RegistrationRequestDto'
+      required:
+        - requestInfo
+        - registrationDto
+    RegistrationRequestDto:
+      type: object
+      description: Single employee registration details.
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phoneNo:
+          type: string
+        emailId:
+          type: string
+        password:
+          type: string
+        lgdCode:
+          type: string
+      required:
+        - firstName
+        - lastName
+        - phoneNo
+        - emailId
+        - password
+        - lgdCode
+    EmployeeResponseDto:
+      type: object
+      description: Response detailing the outcome of the bulk employee creation request.
+      properties:
+        totalUsersSentForCreation:
+          type: integer
+          description: Total number of records sent in the request array.
+        totalUsersNotCreated:
+          type: integer
+          description: Number of users that failed creation (due to validation/internal error).
+        totalUsersCreated:
+          type: integer
+          description: Number of users successfully created.
+        usersCreated:
+          type: array
+          description: Details of users successfully created.
+          items:
+            $ref: '#/components/schemas/CreatedEmployeeDetail'
+        usersCreationFailed:
+          type: array
+          description: List of users that failed creation, including error details (omitted for brevity, typically includes reason/error code).
+          items:
+            type: object # Placeholder for failure detail structure
+        totalExistingUsers:
+          type: integer
+          description: Number of users that already existed in the system.
+        existingUserDetails:
+          type: array
+          description: Details of users that were found to be pre-existing.
+          items:
+            $ref: '#/components/schemas/ExistingEmployeeDetail'
+    CreatedEmployeeDetail:
+      type: object
+      description: Details of a successfully created employee.
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phoneNo:
+          type: string
+        emailId:
+          type: string
+        lgdCode:
+          type: string
+        creationDescription:
+          type: string
+          description: Success message for the creation.
+    ExistingEmployeeDetail:
+      type: object
+      description: Details of an employee that already existed.
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phoneNo:
+          type: string
+        emailId:
+          type: string
+        lgdCode:
+          type: string
+    RequestInfoWithUserInfo:
+      type: object
+      description: DTO for containing authToken and caller's context (UserInfo).
+      properties:
+        authToken:
+          type: string
+          description: The authentication token of the caller.
+        userInfo:
+          $ref: '#/components/schemas/UserInfo'
+      required:
+        - authToken
+        - userInfo
+    BulkCreationV2Request:
+      type: object
+      description: DTO for the multipart form data request containing the file and metadata for bulk creation.
+      properties:
+        requestInfo:
+          type: string
+          description: The RequestInfo object containing the caller's context, serialized as a JSON string (due to multipart form).
+        file:
+          type: string
+          format: binary
+          description: The Excel file containing the user data.
+        actionType:
+          type: string
+          description: The action type for the operation (DELETE_AND_UPDATE or UPDATE).
+        delete_test_users:
+          type: string
+          description: Optional flag to delete test users ("true" or "false").
+      required:
+        - requestInfo
+        - file
+        - actionType
+    EmployeeUpdateLGDRequest:
+      type: object
+      description: Request DTO for updating an employee's LGD code association.
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfoWithUserInfo'
+        allotmentDto:
+          $ref: '#/components/schemas/EmployeeAllotmentDto'
+      required:
+        - requestInfo
+        - allotmentDto
+    EmployeeAllotmentDto:
+      type: object
+      description: Details required to update an employee's LGD code allotment.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: The UUID of the Allotment record itself (if updating existing).
+        userUuid:
+          type: string
+          format: uuid
+          description: The UUID of the employee/user being updated.
+        lgdCode:
+          type: string
+          description: The new LGD code to be associated with the employee.
+      required:
+        - userUuid
+        - lgdCode
+    EmployeeLGDUpdateResponse:
+      type: object
+      description: Response returned after successfully updating an employee's LGD code association.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: UUID of the updated allotment record.
+        userDetails:
+          $ref: '#/components/schemas/FullUserDetail' # Extended user details DTO
+        lgd_code:
+          type: string
+          description: The newly associated LGD code.
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+      required:
+        - uuid
+        - userDetails
+        - lgd_code
+    FullUserDetail:
+      type: object
+      description: Detailed employee/user information.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phoneNo:
+          type: string
+        emailId:
+          type: string
+        username:
+          type: string
+        failedAttempts:
+          type: integer
+          format: int32
+        isDeleted:
+          type: boolean
+        isActive:
+          type: boolean
+      required:
+        - uuid
+        - firstName
+        - lastName
+        - username
+    EmployeeSearchRequest:
+      type: object
+      description: Wrapper DTO for the employee search request.
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfoWithUserInfo'
+        searchDto:
+          $ref: '#/components/schemas/EmployeeSearchDto'
+      required:
+        - requestInfo
+        - searchDto
+
+    EmployeeSearchDto:
+      type: object
+      description: Criteria used for searching employees.
+      properties:
+        phoneNo:
+          type: string
+          description: Phone number of the Employee.
+          nullable: true
+        firstName:
+          type: string
+          description: First name of the Employee.
+          nullable: true
+        lastName:
+          type: string
+          description: Last name of the Employee.
+          nullable: true
+        emailId:
+          type: string
+          description: Email ID of the Employee.
+          nullable: true
+        lgdCode:
+          type: string
+          description: Associated LGD code of the Employee.
+          nullable: true
+
+    Employee:
+      type: object
+      description: An Employee record, linking user details to LGD code and audit information.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: The UUID of the employee record/allotment.
+        user_uuid:
+          $ref: '#/components/schemas/EmployeeUserDetail'
+          description: The full user details associated with this employee record.
+        lgd_code:
+          type: string
+          description: The LGD code associated with this employee.
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+      required:
+        - uuid
+        - user_uuid
+        - lgd_code
+        - auditDetails
+
+    EmployeeUserDetail:
+      type: object
+      description: Detailed user information nested within the Employee search response.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phoneNo:
+          type: string
+        emailId:
+          type: string
+        username:
+          type: string
+        failedAttempts:
+          type: integer
+          format: int32
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+        isDeleted:
+          type: boolean
+        isActive:
+          type: boolean
+      required:
+        - uuid
+        - firstName
+        - lastName
+        - username
+    
+    

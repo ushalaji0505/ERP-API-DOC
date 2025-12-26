@@ -1,0 +1,164 @@
+Docker Setup for Swagger UI
+
+
+1. Move the YAML file to Ubuntu home directory
+
+Place your .yaml file in /home/Balaji.
+
+Check:
+
+ls
+
+(You should see device-api.yaml)
+
+
+
+2. Pull the Swagger UI Docker image (one time only)
+docker pull swaggerapi/swagger-ui
+
+
+
+3. Create a directory for Swagger files (one time only)
+mkdir ~/swagger
+
+
+
+4. Change file permissions
+chmod 644 device-api.yaml
+
+
+
+5. Copy the YAML file to the Swagger directory
+cp device-api.yaml ~/swagger/
+
+
+
+6. Move to the Swagger directory
+cd ~/swagger
+
+Verify:
+
+ls -l
+
+Expected output:
+
+-rw-r--r-- 1 balaji balaji 10408 Dec 12 09:20 device-api.yaml
+
+
+
+VERSION - 1: Docker command for single YAML file
+
+7. Run Swagger UI container (single YAML file)
+docker run --rm -it -p 8080:8080 \
+  -e SWAGGER_JSON=/docs/device-api.yaml \
+  -v "$(pwd)":/docs \
+  swaggerapi/swagger-ui
+
+
+Access Swagger UI:
+
+http://localhost:8080
+
+
+                                                                            
+
+
+VERSION - 2 : Docker command for Multiple YAML file 
+
+8. Run Swagger UI with multiple YAML files (exceptional feature)
+
+docker run --rm -it -p 8080:8080 \
+  -v "$(pwd)":/usr/share/nginx/html/docs \
+  -e URLS='[
+    {"name":"User Employee Service","url":"/docs/user_employee_service-apidoc.yaml"},
+    {"name":"Localization Filestore Service","url":"/docs/localization_filestore-apidoc.yaml"}
+  ]' \
+  -e URLS_PRIMARY_NAME="User Employee Service" \
+  swaggerapi/swagger-ui
+
+http://localhost:8080
+
+
+
+
+VERSION - 3 : Docker Compose file [Light and Perfect]
+
+9. Using Docker Compose
+
+docker-compose.yml
+
+version: "3.9"
+
+services:
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    container_name: swagger-ui
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/usr/share/nginx/html/docs
+    environment:
+      URLS: >
+        [
+          {"name":"User Employee Service","url":"/docs/user_employee_service-apidoc.yaml"},
+          {"name":"Localization Filestore Service","url":"/docs/localization_filestore-apidoc.yaml"},
+          {"name":"MDMS Service","url":"/docs/mdms_service-apidoc.yaml"}
+        ]
+      URLS_PRIMARY_NAME: "User Employee Service"
+    restart: unless-stopped
+
+
+Run:
+
+docker compose up -d
+http://localhost:8080
+
+
+10. Volume Mounting Explanation
+
+Local directory: /home/balaji/swagger
+
+Mounted inside container: /usr/share/nginx/html/docs
+
+
+All local YAML files are available inside the container.
+
+
+11. Offline Mode with Nginx
+
+Swagger UI uses Nginx inside the container to serve YAML files to the browser in offline mode.
+
+12. Nginx Details
+
+Nginx runs inside the Swagger UI container
+
+Listens on port 8080
+
+Serves YAML files to Swagger UI
+
+13. Edit mounted YAML files inside the container
+
+Enter the container:
+
+docker exec -it swagger-ui sh
+
+
+Note: Swagger UI image is based on Alpine Linux, so it uses sh (not bash).
+
+Go to mounted directory:
+
+cd /usr/share/nginx/html/docs
+
+
+Edit a file:
+
+vi mdms_service-apidoc.yaml
+
+
+Vi commands
+
+Press Esc
+
+Save & quit: :wq
+
+Changes reflect immediately in Swagger UI.

@@ -1,0 +1,224 @@
+openapi: 3.0.1
+info:
+  title: Indian Revenue Service
+  version: 1.0.0
+  description: |
+    API for the Issue Resolution System (IRS). 
+    This service manages the lifecycle of complaints, including creation, retrieval, 
+    workflow state updates (Resolving), and communication (Commenting).
+
+paths:
+  /irs/_create:
+    post:
+      tags:
+        - Complaint Management
+      summary: Create a new Complaint
+      description: Creates a complaint and initializes its workflow instance.
+      operationId: createComplaint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              requestInfo:
+                user-uuid: "6b9c9d47-1198-4e1e-9174-e334103b5d13"
+                tenant-uuid: "176195a1-af95-4d89-8ab2-95ee8893a20a"
+                authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+              createIssue:
+                cbName: "TestCBName"
+                applicationNumber: "DBDE450_001"
+                issueDescription: "This is a dummy issue description."
+                attachmentLink: "https://example.com/dummy_attachment"
+              commentsDto: {}
+      responses:
+        "201":
+          description: Complaint created successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                uuid: "ba1a0a3b-1453-49c3-9948-732188cdd031"
+                issueUuid: "7ad669a2-39f2-432e-b6f1-4122f484df45"
+                cbName: "TestCBName"
+                applicationNumber: "DBDE450_001"
+                issueDescription: "This is a dummy issue description."
+                attachmentLink: "https://example.com/dummy_attachment"
+                status: "OPENED"
+                userDetail:
+                  uuid: "6b9c9d47-1198-4e1e-9174-e334103b5d13"
+                tenantDetail:
+                  uuid: "176195a1-af95-4d89-8ab2-95ee8893a20a"
+                auditDetails:
+                  createdTime: 1711616341161
+                  lastModifiedTime: 1711616341161
+
+  /irs/_get:
+    post:
+      tags:
+        - Complaint Management
+      summary: Search Complaints
+      description: Retrieves complaints based on UUID with pagination support.
+      operationId: getComplaint
+      parameters:
+        - name: uuid
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          example: "ba1a0a3b-1453-49c3-9948-732188cdd031"
+        - name: count
+          in: query
+          schema:
+            type: integer
+            default: 100
+          example: 4
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          example: 0
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              user-uuid: "6b9c9d47-1198-4e1e-9174-e334103b5d13"
+              tenant-uuid: "176195a1-af95-4d89-8ab2-95ee8893a20a"
+              authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+      responses:
+        "200":
+          description: OK - Returns detailed issue tracker information
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+              example:
+                - uuid: "ba1a0a3b-1453-49c3-9948-732188cdd031"
+                  issueUuid: "7ad669a2-39f2-432e-b6f1-4122f484df45"
+                  cbName: "TestCBName"
+                  applicationNumber: "DBDE450_001"
+                  issueDescription: "This is a dummy issue description."
+                  attachmentLink: "https://example.com/dummy_attachment"
+                  status: "OPENED"
+                  userDetail:
+                    uuid: "6b9c9d47-1198-4e1e-9174-e334103b5d13"
+                    firstName: "Mukesh"
+                    lastName: "Bharti"
+                    phoneNo: "1234565432"
+                    emailId: "mukesh.bharti@example.com"
+                    auditDetails:
+                      createdBy: ""
+                      lastModifiedBy: ""
+                      createdTime: 1709980217607
+                      lastModifiedTime: 1709980217607
+                  tenantDetail:
+                    uuid: "176195a1-af95-4d89-8ab2-95ee8893a20a"
+                    name: "test_IRS_GROUP"
+                    description: "test"
+                    auditDetails:
+                      createdBy: ""
+                      lastModifiedBy: ""
+                      createdTime: 1709541967346
+                      lastModifiedTime: 1709541967346
+                  comments: null
+                  auditDetails:
+                    createdBy: ""
+                    lastModifiedBy: ""
+                    createdTime: 1711616341161
+                    lastModifiedTime: 1711616341161
+
+  /irs/_update:
+    post:
+      tags:
+        - Complaint Management
+      summary: Update Complaint (Comment or Resolve)
+      description: |
+        Performs workflow actions on a complaint.
+        - **Action 'Comment'**: Adds a comment to the complaint regardless of its state.
+        - **Action 'RESOLVE'**: Changes the complaint status to CLOSED. Only accessible to Resolver roles.
+      operationId: updateComplaint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              oneOf:
+                - $ref: '#/components/examples/CommentRequest'
+                - $ref: '#/components/examples/ResolveRequest'
+            examples:
+              AddingAComment:
+                summary: Action - Add Comment
+                value:
+                  requestInfo:
+                    user-uuid: "17ba1c22-04b2-4c02-ba0e-8d3527a201f3"
+                    tenant-uuid: "176195a1-af95-4d89-8ab2-95ee8893a20a"
+                    authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                  createIssue:
+                    uuid: "ba1a0a3b-1453-49c3-9948-732188cdd031"
+                    action: "Comment"
+                  commentsDto:
+                    comment: "This is a 1st comment by a RESOLVER Role while the complaint is in OPENED state."
+              ResolvingAComplaint:
+                summary: Action - Resolve
+                value:
+                  requestInfo:
+                    user-uuid: "17ba1c22-04b2-4c02-ba0e-8d3527a201f3"
+                    tenant-uuid: "176195a1-af95-4d89-8ab2-95ee8893a20a"
+                    authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                  createIssue:
+                    uuid: "ba1a0a3b-1453-49c3-9948-732188cdd031"
+                    action: "RESOLVE"
+                  wfInstancedetails:
+                    remarks: "complaint resolved Successfully."
+      responses:
+        "200":
+          description: OK - Returns the updated issue details including comments and user/tenant info.
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                issueTrackerDetails:
+                  uuid: "ba1a0a3b-1453-49c3-9948-732188cdd031"
+                  issueUuid: "7ad669a2-39f2-432e-b6f1-4122f484df45"
+                  cbName: "TestCBName"
+                  applicationNumber: "DBDE450_001"
+                  issueDescription: "This is a dummy issue description."
+                  attachmentLink: "https://example.com/dummy_attachment"
+                  status: "OPENED"
+                  comments:
+                    - uuid: "56bed363-6c74-404c-96ba-5bd6f87aff65"
+                      comment: "This is a 1st comment by a RESOLVER Role while the complaint is in OPENED state for Testing purpose With Sucess for the 1st time"
+                      commentedBy: "RESOLVER BEL"
+                      auditDetails:
+                        createdBy: ""
+                        lastModifiedBy: ""
+                        createdTime: 1711618840833
+                        lastModifiedTime: 1711618840833
+                  auditDetails:
+                    createdBy: ""
+                    lastModifiedBy: ""
+                    createdTime: 1711616341161
+                    lastModifiedTime: 1711618840841
+                userDetail:
+                  uuid: "6b9c9d47-1198-4e1e-9174-e334103b5d13"
+                  firstName: "Mukesh"
+                  lastName: "Bharti"
+                  phoneNo: "1234565432"
+                  emailId: "mukesh.bharti@example.com"
+                tenantDetail:
+                  uuid: "176195a1-af95-4d89-8ab2-95ee8893a20a"
+
+components:
+  examples:
+    CommentRequest: {}
+    ResolveRequest: {}

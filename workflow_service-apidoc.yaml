@@ -1,0 +1,1651 @@
+openapi: 3.0.1
+info:
+  title: Workflow Service API
+  description: API for creating and managing workflow definitions.
+  version: v1
+servers:
+  - url: http://localhost:8078/pf-wf-service
+    description: Workflow Service Base URL
+
+paths:
+  /wf/_create:
+    post:
+      tags:
+        - Workflow Definition
+      summary: Create a new workflow definition
+      description: |
+        ### 1. Description of the /wf/_create API Endpoint
+        
+        This section details the primary function of the `POST /wf/_create` endpoint, which is responsible for the creation of a new workflow definition:
+        
+        * **Primary Function:** Creates a new, persistent **Workflow Definition**.
+        * **Input Payload:** Consumes the `WorkFlowRequestDto`, which acts as the **complete state machine blueprint**.
+        * **Core Components:** The blueprint defines the unique workflow **`name`** (e.g., CENSUS_IRS_TOWN), its **`moduleId`** (e.g., MOD001), and a collection of **`stateDtos`**.
+        * **Mandatory Validation Rules:** The service enforces that the definition:
+            * Must have **exactly one starting state** (`isStartState: true`).
+            * Must have **at least one terminating state** (`isTerminateState: true`).
+        * **Output:** The validated definition is **persisted to the backend**, enabling the creation of future workflow instances that follow this defined path.
+        
+        ### 2. State-Level Boolean Parameters (in StateDto)
+        
+        These parameters define the role of a specific state within the workflow:
+        
+        | Parameter | Value | Description |
+        | :--- | :--- | :--- |
+        | **`isStartState`** | `true` | Marks this state as the **mandatory first state** of the workflow. All new process instances **must begin here**. |
+        | | `false` | Marks this state as an **intermediate or final step**, not the initial starting point. |
+        | **`isTerminateState`** | `true` | Marks this state as a **final state**. Once a process enters this state, it is considered **complete**, and **no further actions** or transitions are allowed (it cannot contain actionDtos). |
+        | | `false` | Marks this state as an **intermediate state** from which the workflow can transition to another state via an action. |
+        
+        ### 3. Action-Level Boolean Parameters (in ActionDto)
+        
+        These parameters define the permissions and requirements needed to perform an action and move from one state to the next:
+        
+        | Parameter | Value | Description |
+        | :--- | :--- | :--- |
+        | **`documentRequired`** | `true` | The user performing the action **must upload a supporting document** for the transition to succeed. |
+        | | `false` | **No document** is mandatory for the action to be completed. |
+        | **`assigneeMandatory`** | `true` | The user taking the action **must explicitly specify a user** (an assignee) to whom the workflow instance will be forwarded for processing in the next state. |
+        | | `false` | It is **not mandatory** to specify an assignee; the system uses default assignment logic. |
+        | **`bsoi`** (By Specific Tenant Only) | `true` (Default) | The action can only be executed by users who belong to the **same tenant ID** (`selectedTenantId`) as the one associated with the workflow instance. This enforces tenant isolation. |
+        | | `false` | The action can potentially be executed by users from other tenants (if their roles permit). |
+      operationId: createWorkflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkFlowRequestDto'
+            examples:
+              TownLevelWorkflowExample:
+                summary: Example for Town Level Workflow (CENSUS_IRS_TOWN)
+                value:
+                  requestInfo:
+                    authToken: "9:2734c9998a8768a9061913858900cec1"
+                    userInfo:
+                      userDetails:
+                        uuid: "a6920dd5-c2cc-4e62-bdcc-7f34e85c9fd7"
+                        firstName: "ENUMERATOR"
+                        lastName: "TEST"
+                        username: "TEST_MINISTRY_STATE_DISTRICT_SUB_DISTRICT_TOWN_ENUMERATOR"
+                        phoneNo: "9259522537"
+                        emailId: "test_MINISTRY_STATE_DISTRICT_SUB_DISTRICT_TOWN_ENUMERATOR@example.com"
+                    selectedTenantId: "TEST_TOWN"
+                    selectedRoleIds:
+                      - "MINISTRY.STATE.DISTRICT.SUB_DISTRICT.TOWN.ENUMERATOR"
+                  workFlowDto:
+                    name: "CENSUS_IRS_TOWN"
+                    moduleId: "MOD001"
+                    stateDtos:
+                      - sla: 1000
+                        state: "START"
+                        applicationStatus: null
+                        isStartState: true
+                        isTerminateState: false
+                        actionDtos:
+                          - action: "OPEN"
+                            nextStateName: "OPENED"
+                            documentRequired: false
+                            assigneeMandatory: false
+                            roleIds:
+                              - "MINISTRY.STATE.DISTRICT.SUB_DISTRICT.TOWN.SUPERVISOR"
+                              - "MINISTRY.STATE.DISTRICT.SUB_DISTRICT.TOWN.ENUMERATOR"
+                      - sla: 1000
+                        state: "OPENED"
+                        isStartState: false
+                        isTerminateState: false
+                        actionDtos:
+                          - action: "CLOSE"
+                            nextStateName: "CLOSED"
+                            documentRequired: false
+                            roleIds:
+                              - "MINISTRY.ADMIN"
+                      - sla: null
+                        state: "CLOSED"
+                        isStartState: false
+                        isTerminateState: true
+              GramPanchayatLevelWorkflowExample:
+                summary: Example for Gram Panchayat Level Workflow (CENSUS_IRS_GRAM_PANCHAYAT)
+                value:
+                  requestInfo:
+                    authToken: "9:2734c9998a8768a9061913858900cec1"
+                    userInfo:
+                      userDetails:
+                        uuid: "a6920dd5-c2cc-4e62-bdcc-7f34e85c9fd7"
+                        firstName: "ENUMERATOR"
+                        lastName: "TEST"
+                        username: "TEST_MINISTRY_STATE_DISTRICT_SUB_DISTRICT_TOWN_ENUMERATOR"
+                        phoneNo: "9259522537"
+                        emailId: "test_MINISTRY_STATE_DISTRICT_SUB_DISTRICT_TOWN_ENUMERATOR@example.com"
+                    selectedTenantId: "TEST_TOWN"
+                    selectedRoleIds:
+                      - "MINISTRY.STATE.DISTRICT.SUB_DISTRICT.TOWN.ENUMERATOR"
+                  workFlowDto:
+                    name: "CENSUS_IRS_GRAM_PANCHAYAT"
+                    moduleId: "MOD001"
+                    stateDtos:
+                      - sla: 1000
+                        state: "START"
+                        applicationStatus: null
+                        isStartState: true
+                        isTerminateState: false
+                        actionDtos:
+                          - action: "OPEN"
+                            nextStateName: "OPENED"
+                            documentRequired: false
+                            assigneeMandatory: false
+                            roleIds:
+                              - "MINISTRY.STATE.DISTRICT.SUB_DISTRICT.DEV_BLOCK.GRAM_PANCHAYAT.SUPERVISOR"
+                              - "MINISTRY.STATE.DISTRICT.SUB_DISTRICT.DEV_BLOCK.GRAM_PANCHAYAT.ENUMERATOR"
+                      - sla: 1000
+                        state: "OPENED"
+                        isStartState: false
+                        isTerminateState: false
+                        actionDtos:
+                          - action: "CLOSE"
+                            nextStateName: "CLOSED"
+                            documentRequired: false
+                            roleIds:
+                              - "MINISTRY.ADMIN"
+                      - sla: null
+                        state: "CLOSED"
+                        isStartState: false
+                        isTerminateState: true
+      responses:
+        '201':
+          description: Workflow definition created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkFlowDto'
+              examples:
+                TownLevelResponse:
+                  summary: Example Response for Town Level Workflow
+                  value:
+                    id: "CENSUS_IRS_TOWN"
+                    name: "CENSUS_IRS_TOWN"
+                    moduleId: "MOD001"
+                    bsoi: true
+                    stateDtos:
+                      - id: "CENSUS_IRS_TOWN.START"
+                        sla: 86400000000
+                        state: "START"
+                        parentState: null
+                        isStartState: true
+                        isTerminateState: false
+                        actionDtos:
+                          - id: "CENSUS_IRS_TOWN.START.OPEN"
+                            currentState: "CENSUS_IRS_TOWN.START"
+                            action: "OPEN"
+                            nextState: "CENSUS_IRS_TOWN.OPENED"
+                            nextStateName: "OPENED"
+                            assigneeMandatory: false
+                            condition: null
+                            bsoi: true
+                            documentRequired: false
+                            roleIds:
+                              - "MINISTRY.STATE.DISTRICT.SUB_DISTRICT.TOWN.SUPERVISOR"
+                              - "MINISTRY.STATE.DISTRICT.SUB_DISTRICT.TOWN.ENUMERATOR"
+                      - id: "CENSUS_IRS_TOWN.OPENED"
+                        sla: 86400000000
+                        state: "OPENED"
+                        parentState: null
+                        isStartState: false
+                        isTerminateState: false
+                        actionDtos:
+                          - id: "CENSUS_IRS_TOWN.OPENED.CLOSE"
+                            currentState: "CENSUS_IRS_TOWN.OPENED"
+                            action: "CLOSE"
+                            nextState: "CENSUS_IRS_TOWN.CLOSED"
+                            nextStateName: "CLOSED"
+                            assigneeMandatory: false
+                            condition: null
+                            bsoi: true
+                            documentRequired: false
+                            roleIds:
+                              - "MINISTRY.ADMIN"
+                      - id: "CENSUS_IRS_TOWN.CLOSED"
+                        sla: null
+                        state: "CLOSED"
+                        parentState: null
+                        isStartState: false
+                        isTerminateState: true
+                        actionDtos: []
+                GramPanchayatLevelResponse:
+                  summary: Example Response for Gram Panchayat Level Workflow
+                  value:
+                    id: "CENSUS_IRS_GRAM_PANCHAYAT"
+                    name: "CENSUS_IRS_GRAM_PANCHAYAT"
+                    moduleId: "MOD001"
+                    bsoi: true
+                    stateDtos:
+                      - id: "CENSUS_IRS_GRAM_PANCHAYAT.START"
+                        sla: 86400000000
+                        state: "START"
+                        parentState: null
+                        isStartState: true
+                        isTerminateState: false
+                        actionDtos:
+                          - id: "CENSUS_IRS_GRAM_PANCHAYAT.START.OPEN"
+                            currentState: "CENSUS_IRS_GRAM_PANCHAYAT.START"
+                            action: "OPEN"
+                            nextState: "CENSUS_IRS_GRAM_PANCHAYAT.OPENED"
+                            nextStateName: "OPENED"
+                            assigneeMandatory: false
+                            condition: null
+                            bsoi: true
+                            documentRequired: false
+                            roleIds:
+                              - "MINISTRY.STATE.DISTRICT.SUB_DISTRICT.DEV_BLOCK.GRAM_PANCHAYAT.SUPERVISOR"
+                              - "MINISTRY.STATE.DISTRICT.SUB_DISTRICT.DEV_BLOCK.GRAM_PANCHAYAT.ENUMERATOR"
+                      - id: "CENSUS_IRS_GRAM_PANCHAYAT.OPENED"
+                        sla: 86400000000
+                        state: "OPENED"
+                        parentState: null
+                        isStartState: false
+                        isTerminateState: false
+                        actionDtos:
+                          - id: "CENSUS_IRS_GRAM_PANCHAYAT.OPENED.CLOSE"
+                            currentState: "CENSUS_IRS_GRAM_PANCHAYAT.OPENED"
+                            action: "CLOSE"
+                            nextState: "CENSUS_IRS_GRAM_PANCHAYAT.CLOSED"
+                            nextStateName: "CLOSED"
+                            assigneeMandatory: false
+                            condition: null
+                            bsoi: true
+                            documentRequired: false
+                            roleIds:
+                              - "MINISTRY.ADMIN"
+                      - id: "CENSUS_IRS_GRAM_PANCHAYAT.CLOSED"
+                        sla: null
+                        state: "CLOSED"
+                        parentState: null
+                        isStartState: false
+                        isTerminateState: true
+                        actionDtos: []
+        '400':
+          description: Invalid Request Input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                StartStateMandatory:
+                  summary: Start State Mandatory Error
+                  value:
+                    code: START_STATE_MANDATORY
+                    message: Start state is mandatory.
+                    errors: null
+                MultipleStartStates:
+                  summary: Multiple Start States Error
+                  value:
+                    code: INVALID_INPUT
+                    message: Workflow must have exactly one start state.
+                    errors: null
+                NoTerminateState:
+                  summary: No Terminate State Error
+                  value:
+                    code: INVALID_INPUT
+                    message: Workflow must have at least one terminate state.
+                    errors: null
+                InvalidTerminateState:
+                  summary: Invalid Terminate State Error
+                  value:
+                    code: INVALID_TERMINATE_STATE
+                    message: A terminate state cannot have actions.
+                    errors: null
+
+  /wf/_update:
+    post:
+      tags:
+        - Workflow Definition
+      summary: Update an existing workflow definition
+      operationId: updateWorkflow
+      parameters:
+        - name: actionType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - DELETE_AND_UPDATE
+              - UPDATE
+          description: Defines the type of update operation to perform.
+      description: |
+        This API is used to update an existing workflow definition, supporting two modes specified by the `actionType` query parameter:
+
+        **1. DELETE_AND_UPDATE**
+        * **Description:** Deletes the existing workflow definition, including **all** associated process instances created against it, and creates a new one from the provided definition. Use with extreme caution.
+
+        **2. UPDATE (Safe Update)**
+        * **Description:** Performs a safe, in-place update of the existing workflow. Existing process instances are maintained.
+        * **What you CAN update:**
+            * The `roleIds` array in a particular `actionDto`.
+            * The values of the following boolean/numeric attributes:
+                * `stateDtos.sla`
+                * `stateDtos.actionDtos.assigneeMandatory`
+                * `stateDtos.actionDtos.documentRequired`
+        * **What you CANNOT update (Restricted Modifications):**
+            * **Removing** existing states or actions.
+            * Modifying the core structural attributes (e.g., state names, next states, start/terminate flags).
+        
+        **Request Body:** Requires the full `WorkFlowRequestDto` containing the updated `WorkFlowDto`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkFlowRequestDto'
+            examples:
+              UpdateExample:
+                summary: Example for UPDATE actionType
+                value:
+                  requestInfo:
+                    authToken: "4f4ac045-a40a-4432-a4ee-958642c0a152"
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  workFlowDto:
+                    id: "DOC_REJECTION"
+                    name: "DOC_REJECTION"
+                    moduleId: "MOD001"
+                    bsoi: true
+                    stateDtos:
+                      - id: "DOC_REJECTION.START"
+                        state: "START"
+                        isStartState: true
+                        isTerminateState: false
+                        actionDtos:
+                          - id: "DOC_REJECTION.START.OPEN"
+                            currentState: "DOC_REJECTION.START"
+                            action: "OPEN"
+                            nextState: "DOC_REJECTION.INPROGRESS"
+                            nextStateName: "INPROGRESS"
+                            assigneeMandatory: false
+                            bsoi: true
+                            documentRequired: false
+                            roleIds:
+                              - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                      - id: "DOC_REJECTION.INPROGRESS"
+                        sla: 432000000 
+                        state: "INPROGRESS"
+                        isStartState: false
+                        isTerminateState: false
+                        actionDtos:
+                          - id: "DOC_REJECTION.INPROGRESS.VERIFY"
+                            currentState: "DOC_REJECTION.INPROGRESS"
+                            action: "VERIFY"
+                            nextState: "DOC_REJECTION.VERIFIED"
+                            nextStateName: "VERIFIED"
+                            assigneeMandatory: false
+                            bsoi: false
+                            documentRequired: false
+                            roleIds:
+                              - "UNIVERSITY.ADMIN"
+                          - id: "DOC_REJECTION.INPROGRESS.REJECT"
+                            currentState: "DOC_REJECTION.INPROGRESS"
+                            action: "REJECT"
+                            nextState: "DOC_REJECTION.REJECTED"
+                            nextStateName: "REJECTED"
+                            assigneeMandatory: false
+                            bsoi: false
+                            documentRequired: false
+                            roleIds:
+                              - "UNIVERSITY.ADMIN"
+                      - id: "DOC_REJECTION.REJECTED"
+                        sla: 432000000
+                        state: "REJECTED"
+                        isStartState: false
+                        isTerminateState: false
+                        actionDtos:
+                          - id: "DOC_REJECTION.REJECTED.REVERIFY"
+                            currentState: "DOC_REJECTION.REJECTED"
+                            action: "REVERIFY"
+                            nextState: "DOC_REJECTION.VERIFIED"
+                            nextStateName: "VERIFIED"
+                            assigneeMandatory: false
+                            bsoi: false
+                            documentRequired: false
+                            roleIds:
+                              - "UNIVERSITY.ADMIN"
+                      - id: "DOC_REJECTION.VERIFIED"
+                        state: "VERIFIED"
+                        isStartState: false
+                        isTerminateState: true
+                        actionDtos: []
+      responses:
+        '200':
+          description: Workflow definition updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkFlowDto'
+              examples:
+                UpdatedWfDefResponse:
+                  summary: Successful Update Response
+                  value:
+                    id: "DOC_REJECTION"
+                    name: "DOC_REJECTION"
+                    moduleId: "MOD001"
+                    bsoi: true
+                    stateDtos:
+                      - id: "DOC_REJECTION.START"
+                        state: "START"
+                        isStartState: true
+                        isTerminateState: false
+                        actionDtos:
+                          - id: "DOC_REJECTION.START.OPEN"
+                            currentState: "DOC_REJECTION.START"
+                            action: "OPEN"
+                            nextState: "DOC_REJECTION.INPROGRESS"
+                            nextStateName: "INPROGRESS"
+                            assigneeMandatory: false
+                            bsoi: true
+                            documentRequired: false
+                            roleIds:
+                              - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                      - id: "DOC_REJECTION.INPROGRESS"
+                        sla: 432000000
+                        state: "INPROGRESS"
+                        isStartState: false
+                        isTerminateState: false
+                        actionDtos:
+                          - id: "DOC_REJECTION.INPROGRESS.VERIFY"
+                            currentState: "DOC_REJECTION.INPROGRESS"
+                            action: "VERIFY"
+                            nextState: "DOC_REJECTION.VERIFIED"
+                            nextStateName: "VERIFIED"
+                            assigneeMandatory: false
+                            bsoi: false
+                            documentRequired: false
+                            roleIds:
+                              - "UNIVERSITY.ADMIN"
+                          - id: "DOC_REJECTION.INPROGRESS.REJECT"
+                            currentState: "DOC_REJECTION.INPROGRESS"
+                            action: "REJECT"
+                            nextState: "DOC_REJECTION.REJECTED"
+                            nextStateName: "REJECTED"
+                            assigneeMandatory: false
+                            bsoi: false
+                            documentRequired: false
+                            roleIds:
+                              - "UNIVERSITY.ADMIN"
+                      - id: "DOC_REJECTION.REJECTED"
+                        sla: 432000000
+                        state: "REJECTED"
+                        isStartState: false
+                        isTerminateState: false
+                        actionDtos:
+                          - id: "DOC_REJECTION.REJECTED.REVERIFY"
+                            currentState: "DOC_REJECTION.REJECTED"
+                            action: "REVERIFY"
+                            nextState: "DOC_REJECTION.VERIFIED"
+                            nextStateName: "VERIFIED"
+                            assigneeMandatory: false
+                            bsoi: false
+                            documentRequired: false
+                            roleIds:
+                              - "UNIVERSITY.ADMIN"
+                      - id: "DOC_REJECTION.VERIFIED"
+                        state: "VERIFIED"
+                        isStartState: false
+                        isTerminateState: true
+                        actionDtos: []
+        '400':
+          description: Invalid Request Input or Restricted Update Attempt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                MultipleStartStatesError:
+                  summary: More than one start state
+                  value:
+                    code: INVALID_INPUT
+                    message: Workflow must have exactly one start state.
+                    errors: null
+                NoTerminateStateError:
+                  summary: No terminate state
+                  value:
+                    code: INVALID_INPUT
+                    message: Workflow must have at least one terminate state.
+                    errors: null
+                RestrictedUpdateError:
+                  summary: Attempted restricted structural update
+                  value:
+                    code: INVALID_UPDATE
+                    message: "Only SLA(in days), assigneeMandatory, documentRequired, and roleIds are allowed to be updated. Violations: [Error Message]"
+                    errors: null
+
+  /wf/_delete:
+    post:
+      tags:
+        - Workflow Definition
+      summary: Delete an existing workflow definition
+      description: |
+        This API is responsible for permanently deleting a specific workflow definition.
+        
+        **Warning:** Deleting a workflow definition typically results in the deletion of all associated running and completed workflow process instances. Use this API with extreme caution.
+      operationId: deleteWorkflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkFlowRequestDto'
+            examples:
+              DeleteExample:
+                summary: Example request body for workflow deletion
+                value:
+                  requestInfo:
+                    authToken: "007032fd-0b51-4dd9-872b-450178250220"
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  workFlowDto:
+                    id: "TEST_WF"
+                    name: "TEST_WF"
+                    moduleId: "MOD001"
+      responses:
+        '200':
+          description: Workflow definition deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              examples:
+                SuccessResponse:
+                  summary: Successful Deletion Response
+                  value:
+                    success: true
+        '404':
+          description: Workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                NotFoundError:
+                  summary: Workflow Not Found
+                  value:
+                    code: WF_NOT_FOUND
+                    message: The workflow definition does not exist.
+                    errors: null
+
+  /wf/_search:
+    post:
+      tags:
+        - Workflow Definition
+      summary: Search for existing workflow definitions
+      operationId: searchWorkflows
+      description: |
+        This API is used to search and retrieve a list of workflow definitions based on the provided search criteria contained within the `wfSearchDto`.
+
+        ### Workflow Search Parameters (`WfSearchDto`)
+
+        The `wfSearchDto` object allows you to filter the list of workflow definitions using the following criteria:
+
+        | Parameter | Type | Highlighting/Description |
+        | :--- | :--- | :--- |
+        | **`id`** | `string` | **Search by Workflow ID.** Filters results to match a specific, unique workflow definition ID (e.g., DOC_REJECTION). |
+        | **`module`** | `string` | **Filter by Module.** Filters results to include only workflows that belong to a particular module ID (e.g., MOD001). |
+        | **`parentWfId`** | `string` | **Filter by Parent Workflow.** Useful for systems with hierarchical or sub-workflows. Filters for workflows that are defined as child components of this specific parent workflow ID. |
+        | **`childWfId`** | `string` | **Filter by Child Workflow.** Filters for workflows that have this specific ID defined as one of their child workflows (used for workflows that link to other workflows). |
+        | **`count`** | `integer` | **Pagination Limit.** The maximum number of workflow definitions to return in the response. **Defaults to 10.** |
+        | **`offset`** | `integer` | **Pagination Offset.** The number of records to skip before starting to count the results. Used to retrieve subsequent pages of search results. **Defaults to 0.** |
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WfRequestDto'
+            examples:
+              SearchByIdExample:
+                summary: Example searching by Workflow ID
+                value:
+                  requestInfo:
+                    authToken: "007032fd-0b51-4dd9-872b-450178250220"
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  wfSearchDto:
+                    id: "DOC_REJECTION"
+                    count: 10
+                    offset: 0
+      responses:
+        '200':
+          description: List of workflow definitions matching the criteria
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkFlowDto'
+              examples:
+                DocRejectionResponse:
+                  summary: Example response structure for search results
+                  value:
+                    - id: "DOC_REJECTION"
+                      name: "DOC_REJECTION"
+                      moduleId: "MOD001"
+                      bsoi: true
+                      stateDtos:
+                        - id: "DOC_REJECTION.REJECTED"
+                          sla: 432000000
+                          state: "REJECTED"
+                          isStartState: false
+                          isTerminateState: false
+                          actionDtos:
+                            - id: "DOC_REJECTION.REJECTED.REVERIFY"
+                              currentState: "DOC_REJECTION.REJECTED"
+                              action: "REVERIFY"
+                              nextState: "DOC_REJECTION.VERIFIED"
+                              nextStateName: "VERIFIED"
+                              assigneeMandatory: false
+                              bsoi: false
+                              documentRequired: false
+                              roleIds:
+                                - "UNIVERSITY.ADMIN"
+                        # ... (truncated for brevity, other stateDtos follow)
+        '400':
+          description: Invalid Request Input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidSearchInput:
+                  summary: Invalid or Missing Search Parameters
+                  value:
+                    code: INVALID_INPUT
+                    message: One or more required search parameters are missing or invalid.
+                    errors: null
+                    
+  /wf/process/_create:
+    post:
+      tags:
+        - Workflow Instance (Process)
+      summary: Create a new workflow instance
+      description: |
+        This API is called the first time a workflow is initiated, creating a new, persistent **Workflow Instance**. The instance represents a single running process based on a predefined workflow definition.
+
+        The system determines the **initial state** of the instance using the `workFlowDef` name/ID and the provided `action`. The initial state must be the state marked as `isStartState: true` in the definition.
+
+        ### Key Input Fields
+        
+        | Field | Requirement | Description |
+        | :--- | :--- | :--- |
+        | **`workFlowDef`** | Mandatory | The **ID/Name** of the workflow definition to instantiate (e.g., `DOC_VERIFICATION`). |
+        | **`action`** | Mandatory | The **first action** to be performed, which transitions the process from the internal *virtual* start state to the first defined state (e.g., `OPEN`). |
+        | **`parentInstanceId`** | Conditional | **Required** if the definition is a **child workflow** (i.e., its state in the parent workflow is marked as `parentState`). |
+        | **`assigneeTenantId`** | Conditional | **Required** if the workflow definition has `bsoi: true` and the tenant of the next state's assignee cannot be determined automatically (e.g., if it's different from the requester's tenant). |
+        | **`tenantRoleAndTenantMap`** | Conditional | **Required** if the system's *tracing logic* (tenant hierarchy resolution) cannot apply. It provides a static mapping of roles/scopes to tenant IDs to resolve assignments. |
+      operationId: createWorkflowInstance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkFlowProcessRequestDto'
+            examples:
+              CreateInstanceExample:
+                summary: Example for creating a new workflow instance
+                value:
+                  requestInfo:
+                    authToken: "007032fd-0b51-4dd9-872b-450178250220"
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  wfInstanceDto:
+                    workFlowDef: "DOC_VERIFICATION"
+                    action: "OPEN"
+                    parentInstanceId: "d897d592-91d8-4126-9ee9-bbe4b9937703"
+                    assigneeTenantId: "PES"
+                    tenantRoleAndTenantMap:
+                      PF_ORG: "PF_ORG"
+                      UNIVERSITY.COLLEGE: "PES"
+                      UNIVERSITY.COLLEGE.DEPARTMENT: "PHYSICS"
+                      UNIVERSITY: "VTU"
+      responses:
+        '201':
+          description: Workflow instance created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkFlowProcessResponseDto'
+              examples:
+                NewInstanceResponse:
+                  summary: Successful response showing the new instance state
+                  value:
+                    uuid: "480de946-ee49-4fcc-8ab5-72d0cb966bdd"
+                    taskId: "ABC"
+                    wfDef:
+                      id: "TEST_WF_TEST"
+                      name: "TEST_WF_TEST"
+                      moduleId: "MOD001"
+                      bsoi: true
+                    currentState:
+                      id: "TEST_WF_TEST.INITIATED"
+                      defId: "TEST_WF_TEST"
+                      state: "INITIATED"
+                      sla: 864000000
+                      elapsedTime: 0
+                      isStartState: false
+                      isTerminateState: false
+                    currentAssigneeTenantId: "PHYSICS"
+                    tenantRoleAndTenantMap:
+                      UNIVERSITY: "VTU"
+                      UNIVERSITY.COLLEGE: "PES"
+                      UNIVERSITY.COLLEGE.DEPARTMENT: "PHYSICS"
+        '400':
+          description: Invalid Request Input or Configuration Errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                WorkflowNotFound:
+                  summary: Workflow Definition Not Found Error
+                  value:
+                    code: INVALID_INPUT
+                    message: Workflow not found.
+                    errors: null
+                ActionNotValid:
+                  summary: Invalid Action for State Error
+                  value:
+                    code: INVALID_INPUT
+                    message: "Action not found for this given present state."
+                    errors: null
+                UserNotAuthorized:
+                  summary: User Authorization Error
+                  value:
+                    code: INVALID_INPUT
+                    message: "User can’t perform the specified action."
+                    errors: null
+                ParentProcessIdMissing:
+                  summary: Missing Parent Process UUID
+                  value:
+                    code: INVALID_INPUT
+                    message: "Parent Process UUID must not be empty."
+                    errors: null
+                ParentProcessIdInvalid:
+                  summary: Invalid Parent Process UUID
+                  value:
+                    code: INVALID_INPUT
+                    message: "Parent Process UUID must be valid."
+                    errors: null
+                AssigneeTenantNotFound:
+                  summary: Assignee Tenant ID Not Found Error
+                  value:
+                    code: TENANT_NOT_FOUND
+                    message: "Assignee Tenant ID not found."
+                    errors: null
+                TracingLogicFailed:
+                  summary: Tenant Mapping Required Error
+                  value:
+                    code: INVALID_INPUT
+                    message: "Expected entry in wfInstanceDto.tenantRoleAndTenantMap. For the role: UNIVERSITY.COLLEGE"
+                    errors: null
+                IncompleteTenantMap:
+                  summary: Missing Required Map Entry
+                  value:
+                    code: MISSING_REQUIRED_MAP
+                    message: "Required complete tenantRoleAndTenantMap: {PF_ORG: <tenantId>}"
+                    errors: null
+  /wf/process/_take_action:
+    post:
+      tags:
+        - Workflow Instance (Process)
+      summary: Update the state of a workflow instance by taking an action
+      description: |
+        This API is responsible for applying an authorized action to an existing workflow instance, thereby updating its current state.
+
+        **Authorization Check:** The API strictly validates that the currently authenticated user (via `requestInfo`) is authorized to perform the specified `action` based on their roles (`selectedRoleIds`), current tenant (`selectedTenantId`), and the workflow's current state and definition.
+
+        **State Transition:** If the action is valid and authorized, the workflow instance transitions to the `nextState` defined in the workflow definition, and the instance's details are updated. If the checks fail, an exception is thrown, and the state remains unchanged.
+      operationId: takeWorkflowAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkFlowTakeActionRequestDto'
+            examples:
+              TakeActionExample:
+                summary: Example for taking the APPROVE action
+                value:
+                  requestInfo:
+                    authToken: "007032fd-0b51-4dd9-872b-450178250220"
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  wfInstanceDto:
+                    wfInstanceId: "095bfff3-fc7f-412d-b6a2-915d78966d85"
+                    action: "APPROVE"
+                    assignee: "095bfff3-fc7f-412d-b6a2-915d78966d85"
+                    documents:
+                      - "filestoreId"
+                    documentAccess:
+                      accessToTenants:
+                        - "322ab42d-abfd-42ec-8f3f-315d31ab228c"
+                      accessToUserInstances:
+                        - "e806ee03-9073-408f-af3a-36f2eb93e896"
+                      accessToTenantUserRoles:
+                        - tenantId: "asdfasdf"
+                          roleId: "asdf"
+      responses:
+        '200':
+          description: Workflow instance state updated successfully
+          content:
+            application/json:
+              schema:
+                # Reusing the existing response schema for consistency
+                $ref: '#/components/schemas/WorkFlowProcessResponseDto'
+              examples:
+                UpdatedInstanceResponse:
+                  summary: Successful response showing the new state
+                  value:
+                    uuid: "682917c0-a7d9-47df-9617-25af114a96ca"
+                    taskId: "ABC"
+                    wfDef:
+                      id: "TEST_WF_TEST"
+                      name: "TEST_WF_TEST"
+                      moduleId: "MOD001"
+                      bsoi: true
+                    currentState:
+                      id: "TEST_WF_TEST.VERIFIED"
+                      defId: "TEST_WF_TEST"
+                      state: "VERIFIED"
+                      elapsedTime: 11236
+                      isStartState: false
+                      isTerminateState: false
+                    currentAssigneeTenantId: "PHYSICS"
+                    documents:
+                      - "ba787b0d-1948-4171-b4c7-38fe19d4ca38"
+                    tenantRoleAndTenantMap:
+                      PF_ORG: "PF_ORG"
+                      UNIVERSITY.COLLEGE: "PES"
+                      UNIVERSITY.COLLEGE.DEPARTMENT: "PHYSICS"
+                      UNIVERSITY: "VTU"
+        '400':
+          description: Invalid Request Input or Authorization/Business Logic Errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InstanceNotFound:
+                  summary: Workflow Instance Not Found Error
+                  value:
+                    code: INVALID_INPUT
+                    message: "Workflow instance not found."
+                    errors: null
+                ActionNotValid:
+                  summary: Invalid Action for Current State
+                  value:
+                    code: INVALID_INPUT
+                    message: "Action is not valid for the current state."
+                    errors: null
+                UserNotAuthorized:
+                  summary: User Authorization Error (Two Cases)
+                  value:
+                    code: INVALID_INPUT
+                    message: "User doesn’t have access to perform the action."
+                    errors: null
+                NoChildProcess:
+                  summary: Missing Child Process Error
+                  value:
+                    code: NO_CHILD_PROCESS_FOUND
+                    message: "Cannot proceed as no child processes are available for the current process."
+                    errors: null
+                ChildIncomplete:
+                  summary: Incomplete Child Process Error
+                  value:
+                    code: CHILD_PROCESS_INCOMPLETE
+                    message: "Cannot proceed with next action as a child process is incomplete."
+                    errors: null
+  /wf/process/_delete:
+    post:
+      tags:
+        - Workflow Instance (Process)
+      summary: Delete an existing workflow instance
+      description: |
+        This API is responsible for permanently deleting a specific workflow instance using its UUID.
+        
+        **Warning:** Deleting a workflow instance removes its entire history and current state.
+      operationId: deleteWorkflowInstance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WfProcessRequestDto'
+            examples:
+              DeleteInstanceExample:
+                summary: Example request body for workflow instance deletion
+                value:
+                  requestInfo:
+                    authToken: "007032fd-0b51-4dd9-872b-450178250220"
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  wfInstanceDto:
+                    wfInstanceId: "7ba01d97-4763-4e19-bfb5-9556dc730af0"
+      responses:
+        '200':
+          description: Workflow instance deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              examples:
+                SuccessResponse:
+                  summary: Successful Deletion Response
+                  value:
+                    success: true
+        '404':
+          description: Workflow instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                NotFoundError:
+                  summary: Instance Not Found
+                  value:
+                    code: INSTANCE_NOT_FOUND
+                    message: The workflow instance does not exist.
+                    errors: null
+
+  /wf/process/_search:
+    post:
+      tags:
+        - Workflow Instance (Process)
+      summary: Search for workflow instances
+      description: |
+        This API queries running and completed workflow instances based on criteria provided in the `wfSearchDto`.
+        
+        ### Search Parameters:
+        
+        * **tenantName (Mandatory):** Name of the tenant to restrict the search to.
+        * **moduleName:** Search all workflow process instances belonging to a specific module code.
+        * **instanceUuid:** Search by the UUID of the workflow instance.
+        * **taskId:** Search by the associated task ID.
+        * **wfDef:** Search by the workflow definition name.
+        * **assigner:** Search by the UUID of the user who assigned the task (assigner uuid).
+        * **assignee:** Search by the UUID of the user to whom the task is currently assigned (assignee uuid).
+        * **roles:** Used internally by `searchByRolesOfUser` logic to find all instances where a user (identified by UUID) is eligible to take an action based on their roles.
+        * **state:** Search for instances currently in a given state name. **Requires `wfDef` to be sent.**
+        * **stateId:** Search for instances currently in a given state's composite ID (e.g., `WF_NAME.STATE_NAME`). **Requires `wfDef` to be sent.**
+        
+        ### Control Parameters (Pagination & Detail):
+        
+        * **count:** Maximum number of results to return (Pagination limit).
+        * **offset:** Number of records to skip (Pagination offset).
+        * **returnChildren:** Boolean (`false` by default). If `true`, the full list of `WfStateInstance` (the history of state transitions) is returned.
+        * **returnWfDef:** Boolean (`false` by default). If `true`, the full Workflow Definition with States is returned with the instance.
+        * **returnParentOnly:** Boolean (`false` by default). If `true`, only the parent instance is returned (useful when dealing with hierarchical workflows).
+
+        **Note on Child Instances:** If you request child workflow process instances by setting `returnChildren: true`, you must also ensure the necessary parameters like `instanceUuid` and `stateId` are not empty, or an `INVALID_INPUT` error will be returned.
+      operationId: searchWorkflowInstances
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WfSearchRequestDto'
+            examples:
+              SearchInstanceExample:
+                summary: Basic search example
+                value:
+                  requestInfo:
+                    # ... (Details for RequestInfo) ...
+                    authToken: "007032fd-0b51-4dd9-872b-450178250220"
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  wfSearchDto:
+                    instanceUuid: ""
+                    count: 10
+                    offset: 0
+      responses:
+        '200':
+          description: List of workflow instances matching the search criteria
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WfInstance'
+              examples:
+                SuccessResponse:
+                  summary: Successful search response with one instance
+                  value:
+                    - uuid: "06f1cfe6-24ff-4c3f-a4d3-4e6c8af16eec"
+                      taskId: "ABC"
+                      wfDef:
+                        id: "DOC_REJECTION"
+                        name: "DOC_REJECTION"
+                        moduleId: "MOD001"
+                      currentState:
+                        state: "VERIFIED"
+                      currentAssignee: null
+                      stateInstances: 
+                        - # ... (WfStateInstance details) ...
+        '400':
+          description: Invalid input parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                InvalidModule:
+                  summary: Module not found error
+                  value:
+                    code: INVALID_INPUT
+                    message: "Module not found."
+                MissingChildParams:
+                  summary: Missing parameters for child instance search
+                  value:
+                    code: INVALID_INPUT
+                    message: "Instance UUID and Parent State UUID must not be empty."
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      description: Standard error response structure
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        errors:
+          type: object
+          nullable: true
+
+    SuccessResponse:
+      type: object
+      description: Generic success response indicating that the operation completed.
+      properties:
+        success:
+          type: boolean
+          description: Indicates whether the operation was successful.
+          example: true
+
+    UserDetails:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        username:
+          type: string
+        phoneNo:
+          type: string
+        emailId:
+          type: string
+
+    UserInfo:
+      type: object
+      properties:
+        userDetails:
+          $ref: '#/components/schemas/UserDetails'
+        selectedTenantId:
+          type: string
+        selectedRoleIds:
+          type: array
+          items:
+            type: string
+
+    RequestInfo:
+      type: object
+      properties:
+        authToken:
+          type: string
+        userInfo:
+          $ref: '#/components/schemas/UserInfo'
+
+    WorkFlowRequestDto:
+      type: object
+      required:
+        - requestInfo
+        - workFlowDto
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+        workFlowDto:
+          $ref: '#/components/schemas/WorkFlowDto'
+
+    WorkFlowDto:
+      type: object
+      required:
+        - name
+        - moduleId
+        - stateDtos
+      properties:
+        id:
+          type: string
+          readOnly: true
+          description: Generated unique ID for the workflow.
+        name:
+          type: string
+          pattern: "^[A-Z_]{1,254}$"
+          description: Unique name of the workflow (e.g., CENSUS_IRS_TOWN).
+        moduleId:
+          type: string
+        bsoi:
+          type: boolean
+          default: true
+          description: By Specific Tenant Only. If true, the workflow instance or action can only be processed by users who belong to the same tenant as specified in the original request. Defaults to true.
+        stateDtos:
+          type: array
+          items:
+            $ref: '#/components/schemas/StateDto'
+
+    StateDto:
+      type: object
+      required:
+        - state
+      properties:
+        id:
+          type: string
+          readOnly: true
+          description: Generated state ID (e.g., CENSUS_IRS_TOWN.START).
+        sla:
+          type: integer
+          format: int64
+          nullable: true
+          description: Service Level Agreement in milliseconds.
+        state:
+          type: string
+          pattern: "^[A-Za-z_ ]{1,254}$"
+        applicationStatus:
+          type: string
+          nullable: true
+        parentState:
+          type: string
+          pattern: "^[A-Z_]{1,254}$"
+          nullable: true
+          description: For a child workflow, this is the ID of the parent workflow state it completes (e.g., TEST_WF_PARENT.PENDING).
+        isStartState:
+          type: boolean
+          description: Must be true for exactly one state. When true, this state is the mandatory starting point for all new workflow instances.
+        isTerminateState:
+          type: boolean
+          description: Must be true for at least one state, and a terminate state cannot have actions. When true, the workflow process is considered complete, and no further state transitions are allowed.
+        actionDtos:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionDto'
+
+    ActionDto:
+      type: object
+      required:
+        - action
+        - nextStateName
+        - roleIds
+      properties:
+        id:
+          type: string
+          readOnly: true
+          description: Generated action ID (e.g., CENSUS_IRS_TOWN.START.OPEN).
+        currentState:
+          type: string
+          readOnly: true
+        action:
+          type: string
+          pattern: "^[A-Za-z_]{1,254}$"
+        nextState:
+          type: string
+          readOnly: true
+          description: Generated full state ID of the next state.
+        nextStateName:
+          type: string
+          pattern: "^[A-Za-z_ ]{1,254}$"
+          description: The simple name of the next state (e.g., "OPENED").
+        assigneeMandatory:
+          type: boolean
+          default: false
+          description: If true, the user taking the action must explicitly specify an assignee for the next state. Defaults to false.
+        condition:
+          type: string
+          enum: [ALL, ATLEAST_ONE]
+          nullable: true
+          description: Mandatory if an action completes a child workflow, indicating if 'ALL' or 'ATLEAST_ONE' child process must complete.
+        bsoi:
+          type: boolean
+          default: true
+          description: By Specific Tenant Only. If true, the action can only be executed by users who belong to the same tenant as specified in the original request. Defaults to true.
+        documentRequired:
+          type: boolean
+          default: false
+          description: If true, a supporting document must be uploaded to successfully perform this action. Defaults to false.
+        roleIds:
+          type: array
+          items:
+            type: string
+            
+    WfRequestDto:
+      type: object
+      description: Request container for workflow search operations.
+      required:
+        - requestInfo
+        - wfSearchDto
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+        wfSearchDto:
+          $ref: '#/components/schemas/WfSearchDto'
+
+    WfSearchDto:
+      type: object
+      description: Search criteria for filtering workflow definitions.
+      properties:
+        id:
+          type: string
+          description: ID of the workflow definition to search for.
+        childWfId:
+          type: string
+          description: ID of a child workflow definition.
+        parentWfId:
+          type: string
+          description: ID of a parent workflow definition.
+        module:
+          type: string
+          description: ID of the module the workflow belongs to.
+        count:
+          type: integer
+          format: int32
+          description: Maximum number of records to return (for pagination).
+          default: 10
+        offset:
+          type: integer
+          format: int32
+          description: The number of records to skip (for pagination).
+          default: 0
+
+    WorkFlowProcessRequestDto:
+      type: object
+      description: Request container for creating a new workflow instance.
+      required:
+        - requestInfo
+        - wfInstanceDto
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+        wfInstanceDto:
+          $ref: '#/components/schemas/WfInstanceDto'
+
+    WfInstanceDto:
+      type: object
+      description: Core payload for creating or updating a workflow instance.
+      required:
+        - workFlowDef
+        - action
+      properties:
+        workFlowDef:
+          type: string
+          description: The ID of the workflow definition to be instantiated (e.g., DOC_VERIFICATION).
+        action:
+          type: string
+          description: The action name (e.g., OPEN) that moves the process from the virtual start state to the first actual state.
+        parentInstanceId:
+          type: string
+          format: uuid
+          nullable: true
+          description: UUID of the parent workflow instance, required if this is a child process.
+        assigneeTenantId:
+          type: string
+          nullable: true
+          description: Tenant ID to which the process should be assigned in the next state. Required if tenant tracing logic fails.
+        tenantRoleAndTenantMap:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          description: A map of system-defined role scopes (e.g., UNIVERSITY.COLLEGE) to their corresponding Tenant IDs (e.g., PES) for assignment resolution when tracing is not possible.
+
+    WorkFlowProcessResponseDto:
+      type: object
+      description: Response containing the details of the newly created workflow instance.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique identifier for this workflow instance (process ID).
+        taskId:
+          type: string
+          description: Identifier for the current task associated with this instance.
+        wfDef:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            moduleId:
+              type: string
+            bsoi:
+              type: boolean
+          description: A minimal copy of the associated workflow definition details.
+        currentState:
+          $ref: '#/components/schemas/WfInstanceStateDto'
+          description: Details of the state the workflow instance is currently in.
+        currentAssigneeTenantId:
+          type: string
+          description: The Tenant ID to which the current state is assigned.
+        tenantRoleAndTenantMap:
+          type: object
+          additionalProperties:
+            type: string
+          description: The final map used for resolving tenant/role assignments for this instance.
+
+    WfInstanceStateDto:
+      type: object
+      description: Details about the current state of a workflow instance.
+      properties:
+        id:
+          type: string
+          description: The full ID of the state in the definition (e.g., TEST_WF_TEST.INITIATED).
+        defId:
+          type: string
+          description: The ID of the workflow definition.
+        state:
+          type: string
+          description: The simple name of the state (e.g., INITIATED).
+        sla:
+          type: integer
+          format: int64
+          nullable: true
+          description: SLA in milliseconds associated with this state.
+        elapsedTime:
+          type: integer
+          format: int64
+          description: Time elapsed in the current state in milliseconds.
+        isStartState:
+          type: boolean
+        isTerminateState:
+    WorkFlowTakeActionRequestDto:
+      type: object
+      description: Request container for taking an action on a workflow instance.
+      required:
+        - requestInfo
+        - wfInstanceDto
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+        wfInstanceDto:
+          $ref: '#/components/schemas/WfActionInstanceDto' # Referencing the new action-specific DTO
+    DocumentAccessDto:
+      type: object
+      description: Defines explicit access control for documents added to the workflow.
+      properties:
+        accessToTenants:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of Tenant IDs that should have access to the document(s).
+        accessToUserInstances:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of specific User UUIDs that should have access to the document(s).
+        accessToTenantUserRoles:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantRoleMapping'
+          description: List of explicit (Tenant ID, Role ID) pairs that should have access.
+
+    TenantRoleMapping:
+      type: object
+      description: A structure to link a Tenant ID with a specific Role ID.
+      required:
+        - tenantId
+        - roleId
+      properties:
+        tenantId:
+          type: string
+        roleId:
+          type: string
+    WfActionInstanceDto:
+      type: object
+      description: Core payload for performing an action on a workflow instance.
+      required:
+        - wfInstanceId
+        - action
+      properties:
+        wfInstanceId:
+          type: string
+          format: uuid
+          description: UUID of the workflow instance to be updated.
+        action:
+          type: string
+          description: The name of the action to be performed (e.g., APPROVE, REJECT).
+        assignee:
+          type: string
+          format: uuid
+          nullable: true
+          # description: The UUID of the user to whom the process should be assigned in the next state. Mandatory if the action definition has `assigneeMandatory: true`.
+        documents:
+          type: array
+          items:
+            type: string
+            format: uuid
+          nullable: true
+          # description: List of FileStore UUIDs for documents uploaded as part of this action. Mandatory if the action definition has `documentRequired: true`.
+        documentAccessStrategy:
+          type: string
+          nullable: true
+          enum: [ALL_ROLES_IN_PROCESS]
+          description: Defines a predefined strategy for document access permissions.
+        documentAccess:
+          $ref: '#/components/schemas/DocumentAccessDto'
+          nullable: true
+          description: Detailed, manual configuration for document access permissions.
+        comment:
+          type: string
+          nullable: true
+          description: Optional comment provided by the user while taking the action.
+    WfProcessRequestDto:
+      type: object
+      description: The root request object for workflow instance operations.
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard header/user context information.
+        wfInstanceDto:
+          $ref: '#/components/schemas/WfInstanceIdDto'
+          description: Data Transfer Object containing the instance ID to be deleted.
+      required:
+        - requestInfo
+        - wfInstanceDto
+    WfInstanceIdDto:
+      type: object
+      description: DTO for identifying a specific workflow instance.
+      properties:
+        wfInstanceId:
+          type: string
+          format: uuid
+          description: UUID of the workflow instance to be deleted.
+      required:
+        - wfInstanceId
+    WfSearchRequestDto:
+      type: object
+      description: Root request object for searching workflow instances.
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard header/user context information.
+        wfSearchDto:
+          $ref: '#/components/schemas/WfSearchDto'
+          description: Search criteria and control parameters for the query.
+      required:
+        - requestInfo
+        - wfSearchDto
+    WfInstance:
+      type: object
+      description: Represents a single workflow process instance.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        wfDef:
+          $ref: '#/components/schemas/WfDefinitionSummary'
+        currentState:
+          $ref: '#/components/schemas/WfCurrentState'
+        currentAssignee:
+          type: string
+          format: uuid
+          nullable: true
+        currentAssigneeTenantId:
+          type: string
+        parentInstanceId:
+          type: string
+          format: uuid
+          nullable: true
+        tenantRoleAndTenantMap:
+          type: object
+          description: Map of role prefixes to the tenant they belong to in this instance.
+        stateInstances:
+          type: array
+          items:
+            $ref: '#/components/schemas/WfStateInstance'
+          description: History of all state transitions (if `returnChildren` is true).
+    WfDefinitionSummary:
+      type: object
+      description: Summary of the workflow definition used by the instance.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        moduleId:
+          type: string
+        bsoi:
+          type: boolean
+
+    WfCurrentState:
+      type: object
+      description: Details of the instance's current state.
+      properties:
+        id:
+          type: string
+        defId:
+          type: string
+        state:
+          type: string
+        elapsedTime:
+          type: integer
+          description: Time spent in the current state (milliseconds).
+        isStartState:
+          type: boolean
+        isTerminateState:
+          type: boolean
+
+    WfStateInstance:
+      type: object
+      description: Represents one step/state transition in the workflow history.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        wfInstanceId:
+          type: string
+          format: uuid
+        stateId:
+          type: string
+        stateName:
+          type: string
+        assigner:
+          type: string
+          format: uuid
+          nullable: true
+        assignerName:
+          type: string
+          nullable: true
+        assignee:
+          type: string
+          format: uuid
+          nullable: true
+        assigneeName:
+          type: string
+          nullable: true
+        duration:
+          type: integer
+          description: Time spent in the state before transition (milliseconds).
+        assigneeTenantId:
+          type: string
+        attachments:
+          type: array
+          items:
+            type: string
+            format: uuid
+          nullable: true
+        remarks:
+          type: string
+          nullable: true
+        createdTime:
+          type: integer
+          format: int64
+          description: Timestamp when the instance entered this state.
+    

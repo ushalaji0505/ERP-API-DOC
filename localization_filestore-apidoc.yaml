@@ -1,0 +1,1047 @@
+openapi: 3.0.1
+info:
+  title: "Platform Microservices API"
+  version: v1
+  description: |
+    This specification combines the APIs for multiple platform microservices, including:
+    1. **Localization API:** Manages localization messages.
+    2. **Platform File Store Service:** Manages storage, retrieval, and access control of binary assets.
+servers:
+  - url: http://localhost:8075/pf-localization-service
+    description: Local development server for Localization Service
+  - url: http://localhost:8076/pf-filestore-service
+    description: Local development server for File Store Service
+  - url: https://{env-url}/pf-filestore-service
+    description: Production/Staging Environment for File Store Service
+
+paths:
+  # =========================================================
+  # Localization Service Paths (pf-localization-service)
+  # =========================================================
+  /_create:
+   post:
+    tags:
+      - localization-controller
+    summary: Create one or more localization messages
+    description: |
+      Creates one or multiple localization messages.
+      Each message requires:
+      - `locale`: language and country code (e.g., EN_IN)
+      - `code`: unique identifier for the message (e.g., SUBMIT)
+      - `message`: text to display to users (e.g., 'Submit')
+      - `module`: module or feature this message belongs to (e.g., IFMIS-TEST)
+
+      Send multiple entries in a single request as a JSON array.
+    operationId: createLocalization
+    requestBody:
+      description: Array of localization objects to create.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object
+            example:
+              - locale: "EN_IN"
+                code: "SUBMIT"
+                message: "Submit"
+                module: "IFMIS-TEST"
+    responses:
+      '201':
+        description: Localization messages created successfully
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+            example:
+              - id: "IFMIS-TEST.EN_IN.SUBMIT"
+                module: "IFMIS-TEST"
+                code: "SUBMIT"
+                locale: "EN_IN"
+                message: "Submit"
+      '400':
+        description: Invalid input or missing required fields
+        content:
+          application/json:
+            schema:
+              type: object
+      '401':
+        description: Unauthorized access
+        content:
+          application/json:
+            schema:
+              type: object
+      '500':
+        description: Internal server error
+        content:
+          application/json:
+            schema:
+              type: object
+  /_update:
+   post:
+    tags:
+      - localization-controller
+    summary: Update a localization message
+    description: |
+      Updates an existing localization message. 
+      The unique message is identified by the query parameters `module`, `locale`, and `id`.
+    operationId: updateLocalization
+    parameters:
+      - name: module
+        in: query
+        required: true
+        schema:
+          type: string
+        example: "IFMIS-TEST"
+      - name: locale
+        in: query
+        required: true
+        schema:
+          type: string
+        example: "EN_IN"
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: string
+        example: "IFMIS-TEST.EN_IN.SUBMIT"
+    requestBody:
+      description: Localization object with updated fields. All fields are mandatory.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            example:
+              message: "Cancel"
+              locale: "EN_IN"
+              module: "IFMIS-TEST"
+              code: "CANCEL"
+    responses:
+      '200':
+        description: Localization message updated successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                id: "IFMIS-TEST.EN_IN.CANCEL"
+                locale: "EN_IN"
+                module: "IFMIS-TEST"
+                code: "CANCEL"
+                templateId: null
+      '400':
+        description: Invalid input or localization not found
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                code: "INVALID_INPUT"
+                message: "Localization not found"
+                errors: null
+      '401':
+        description: Unauthorized access
+        content:
+          application/json:
+            schema:
+              type: object
+      '500':
+        description: Internal server error
+        content:
+          application/json:
+            schema:
+              type: object
+  /_search:
+   post:
+    tags:
+      - localization-controller
+    summary: Search localization messages
+    description: |
+      Retrieves localization results from the database. 
+      
+      **Search Logic:**
+      1. **Module & Locale (Mandatory):** Returns all messages belonging to that module and language.
+      2. **Code (Optional):** If provided, filters the results to only the specific message code.
+    operationId: searchLocalizationByParam
+    requestBody:
+      description: Search criteria. `module` and `locale` are required.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            example:
+              message: "Cancel"
+              locale: "EN_IN"
+              module: "IFMIS-TEST"
+              code: "SUBMIT"
+    responses:
+      '200':
+        description: OK - Returns an array of matching localization objects.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+            examples:
+              situation_1_all_module_messages:
+                summary: Search by Module and Locale only
+                value:
+                  - id: "IFMIS-TEST.EN_IN.SUBMIT"
+                    locale: "EN_IN"
+                    code: "SUBMIT"
+                    message: "Submit"
+                    module: "IFMIS-TEST"
+                    templateId: "-"
+                  - id: "IFMIS-TEST.EN_IN.CANCEL"
+                    locale: "EN_IN"
+                    code: "CANCEL"
+                    message: "Cancel"
+                    module: "IFMIS-TEST"
+                    templateId: "-"
+              situation_2_specific_code:
+                summary: Search by Module, Locale, and Code
+                value:
+                  - id: "IFMIS-TEST.EN_IN.SUBMIT"
+                    locale: "EN_IN"
+                    code: "SUBMIT"
+                    message: "Submit"
+                    module: "IFMIS-TEST"
+                    templateId: "-"
+      '400':
+        description: Bad Request - Missing mandatory fields (module or locale).
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                code: "MISSING_MANDATORY_FIELDS"
+                message: "Module and Locale are required for search."
+      '500':
+        description: Internal Server Error.
+        content:
+          application/json:
+            schema:
+              type: object
+  /_searchV2:
+   post:
+    tags:
+      - localization-controller
+    summary: Search localization messages using Redis
+    description: |
+      Searches localization messages in the Redis cache for high-performance retrieval.
+      
+      **Search Logic:**
+      - `module` and `locale` are **mandatory**.
+      - `code` is **optional**.
+      - Returns a flat map of ID-to-Message for faster client-side lookups.
+    operationId: searchLocalizationByRedis
+    requestBody:
+      description: Redis search criteria. `module` and `locale` are required.
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            example:
+              module: "IFMIS-TEST"
+              locale: "EN_IN"
+              code: "CANCEL"
+    responses:
+      '200':
+        description: OK - Returns a map of matching localization IDs and their messages.
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+            examples:
+              situation_1_module_search:
+                summary: Search by Module and Locale
+                value:
+                  "IFMIS-TEST.EN_IN.SUBMIT": "submit"
+                  "IFMIS-TEST.EN_IN.CANCEL": "Cancel"
+              situation_2_code_search:
+                summary: Search by Specific Code
+                value:
+                  "IFMIS-TEST.EN_IN.SUBMIT": "submit"
+      '400':
+        description: Invalid search parameters (Missing mandatory fields).
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                code: "INVALID_SEARCH_PARAMS"
+                message: "module and locale fields are mandatory"
+      '500':
+        description: Internal server error (e.g., Redis connection failure).
+        content:
+          application/json:
+            schema:
+              type: object
+  /_delete:
+   delete:
+    tags:
+      - localization-controller
+    summary: Delete a localization message
+    description: |
+      Deletes an existing localization entry. 
+      The record is identified using the `module`, `locale`, and `id` provided in the request body.
+    operationId: deleteLocalization
+    parameters:
+      - name: module
+        in: query
+        required: true
+        schema:
+          type: string
+        example: "IFMIS-TEST"
+      - name: locale
+        in: query
+        required: true
+        schema:
+          type: string
+        example: "EN_IN"
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: string
+        example: "IFMIS-TEST.EN_IN.SUBMIT"
+    requestBody:
+      description: "Localization delete information. All fields (module, locale, id) are mandatory."
+      required: true
+      content:
+        application/json:
+          schema:
+            example:
+              module: "IFMIS-TEST"
+              locale: "EN_IN"
+              id: "IFMIS-TEST.EN_IN.SUBMIT"
+    responses:
+      '200':
+        description: Localization message deleted successfully
+        content:
+          application/json:
+            schema:
+              example:
+                success: true
+      '400':
+        description: Invalid input or Localization not found
+        content:
+          application/json:
+            schema:
+              example:
+                code: "INVALID_INPUT"
+                message: "Localization not found"
+                errors: null
+      '401':
+        description: Unauthorized access
+      '500':
+        description: Internal server error
+  /_bulkInsert:
+    post:
+      tags:
+        - localization-controller
+      summary: Bulk insert localization messages from a file
+      description: "Uploads a file containing multiple localization messages. Use the `actionType` query parameter to define the type of bulk insert."
+      operationId: createBulkCityMasterData
+      parameters:
+        - name: actionType
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: File to upload containing localization messages.
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Bulk insert completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid input or file
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+  
+  # =========================================================
+  # File Store Service Paths (pf-filestore-service) - ALL INCLUDED
+  # =========================================================
+  /filestore/createbucket:
+    post:
+      tags:
+        - File Management
+      summary: Create a New Storage Bucket
+      operationId: createBucket
+      requestBody:
+        description: The name of the new bucket to create.
+        content:
+          application/json:
+            schema:
+              type: string
+              example: new-user-storage
+        required: true
+      responses:
+        '200':
+          description: OK - Bucket created or already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilestoreBucket'
+  /filestore/buckets:
+    get:
+      tags:
+        - File Management
+      summary: List All Existing Buckets
+      operationId: listBuckets
+      responses:
+        '200':
+          description: OK - List of all buckets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FilestoreBucket'
+  '/filestore/{bucket}/download':
+    get:
+      tags:
+        - File Management
+      summary: Download File by MinIO Bucket/File Key (Legacy/Internal)
+      description: A simple, non-platform endpoint for file download based solely on MinIO path (bucket and file key). **Does not perform platform access control checks.**
+      operationId: downloadFile
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: file
+          in: query
+          required: true
+          schema:
+            type: string
+            description: The key/name of the file within the bucket.
+      responses:
+        '200':
+          description: OK - Binary File Stream
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+  /filestore/_create:
+    post:
+      tags:
+        - File Management
+      summary: Upload File & Define Access Control (File Ingestion)
+      description: |
+        The primary endpoint for file ingestion. It uploads the binary file and sets its security and categorization metadata in one operation.
+        
+        **Input Format:** `multipart/form-data`. The security/metadata object (`uploadFileDtoStr`) must be sent as a **stringified JSON**.
+      operationId: uploadFile_with_dto
+      requestBody:
+        description: The request body for file creation, consisting of the binary file and the stringified JSON metadata.
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - uploadFileDtoStr
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: '**MANDATORY:** The binary file (e.g., document, image) to be stored. Max file size is typically configured at the gateway level.'
+                uploadFileDtoStr:
+                  type: string
+                  description: |
+                    **MANDATORY:** Stringified JSON object containing `FilestoreRequestInfo` and `FilestoreDetailsDto`. The content defines the access policy and ownership.
+                  example: |
+                    {
+                      "requestInfo": {
+                        "authToken": "b7abead3-d7df-4f42-bf27-de7e1f38a65c",
+                        "userInfo": {
+                          "userDetails": {
+                            "uuid": "ac39133e-52c1-49cb-96f3-d686ac5b51b6",
+                            "username": "TestUser"
+                          },
+                          "selectedTenantId": "PES",
+                          "selectedRoleIds": [
+                            "UNIVERSITY.COLLEGE.PRINCIPAL"
+                          ]
+                        }
+                      },
+                      "fileStoreDetailsDto": {
+                        "moduleId": "MOD001",
+                        "accessType": "RESTRICTED",
+                        "reason": "Initial upload reason",
+                        "accessToUserInstances": [
+                          "76fffaf4-8706-4fbb-8075-9e44d4671dde"
+                        ]
+                      }
+                    }
+      responses:
+        '200':
+          description: OK - File Created Successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilestoreResponse'
+  /filestore/_update:
+   post:
+    tags:
+      - File Management
+    summary: Update File Metadata (Change Access Policy)
+    description: |
+      Modifies the access control and metadata of an existing file using its unique `fileStoreId`. 
+      
+      **This endpoint does NOT re-upload or modify the file's binary content.**
+      
+      **Access Types:**
+      * `OPEN`: Anyone who has logged in and possesses the `filestoreId` can access the file.
+      * `RESTRICTED`: Access is strictly validated against `accessToTenantRoles`, `accessToUserInstances`, and `accessToTenantUserRoles`.
+    operationId: updateFileStoreData
+    requestBody:
+      description: 'JSON object containing the FilestoreRequestInfo for authorization and the FilestoreDetailsDto with the updated metadata. **The `fileStoreId` must be present.**'
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - requestInfo
+              - fileStoreDetailsDto
+          example:
+            requestInfo:
+              authToken: "f104b3e5-3550-4aa7-a7bd-d62165c0ef28"
+              userInfo:
+                userDetails:
+                  uuid: "2441401f-9dd6-42d9-8908-d75ba2020f97"
+                  firstName: "ADMIN"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_ADMIN"
+                selectedTenantId: "UNIVERSITY"
+                selectedRoleIds:
+                  - "UNIVERSITY.ADMIN"
+            fileStoreDetailsDto:
+              fileStoreId: "c096e588-bd6f-4608-a629-b91f9378df7f"
+              moduleId: "MOD001"
+              accessType: "RESTRICTED"
+              reason: "Reason for access"
+              applicationNo: "APP-123456"
+              accessToTenantRoles:
+                - "UNIVERSITY"
+              accessToUserInstances:
+                - "76fffaf4-8706-4fbb-8075-9e44d4671dde"
+              accessToTenantUserRoles:
+                - tenantId: "COLLEGE"
+                  roleId: "UNIVERSITY.COLLEGE.PRINCIPAL"
+    responses:
+      '200':
+        description: OK - Metadata Updated Successfully
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              filestore_id: "457069e3-eef7-41b8-97a2-981c154d50a6"
+              user_uuid: "897069e3-eef7-41b8-97a2-981c154d50a6"
+              tenant_id: "897069e3-eef7-41b8-97a2-981c154d50a6"
+              module_id: "MOD001"
+  /filestore/_get:
+    get:
+      tags:
+        - File Management
+      summary: Get File Content (Base64/Raw) - Simple Retrieval
+      description: |
+        Retrieves the file content for a file with `accessType: OPEN` or for a file whose access is guaranteed by the current user's role.
+        
+        The response is a Base64-encoded string representing the file's binary content. This endpoint downloads the file without its original file extension.
+        
+        **Authorization Note:** A valid `Authorization` Bearer token is still required in the header for user authentication.
+      operationId: downloadFileBase64
+      parameters:
+        - name: file
+          in: query
+          required: true
+          description: '**MANDATORY:** The unique `fileStoreId` (UUID) of the file to retrieve. No other parameters are needed.'
+          schema:
+            type: string
+            format: uuid
+            example: 5407f2f0-859e-4fe7-8122-4557ae34c998
+        - name: Authorization
+          in: header
+          required: true
+          description: Bearer token for user authentication.
+          schema:
+            type: string
+            example: 'Bearer 007032fd-0b51-4dd9-872b-450178250220'
+      responses:
+        '200':
+          description: OK - Base64 Content Stream
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: "The file's binary content, encoded as a Base64 string."
+                example: 'JVBERi0xLjQKJ... [Base64 content of the file]'
+        '401':
+          description: Unauthorized - Invalid or missing Authorization token.
+        '404':
+          description: Not Found - File ID does not exist.
+        '403':
+          description: Forbidden - User does not have access to the requested file.
+  /filestore/_download:
+    get:
+      tags:
+        - File Management
+      summary: Download File (Binary Stream with Original Extension)
+      description: |
+        Retrieves the file content as a raw binary stream (`application/octet-stream`). This is suitable for direct client download and will preserve the original filename and extension using standard HTTP content disposition headers.
+        
+        **Access Control:** This endpoint requires the full `FilestoreRequestInfo` object within the request body for comprehensive authorization checks against the file's access policy.
+      operationId: getFile
+      requestBody:
+        description: '**MANDATORY:** JSON object containing the `FilestoreRequestInfo` (security context) and the file''s ID (`fileStoreId`), used for robust access control validation.'
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilestoreIdDto'
+            example:
+              requestInfo:
+                authToken: 007032fd-0b51-4dd9-872b-450178250220
+                userInfo:
+                  userDetails:
+                    uuid: d4755057-561b-4eea-af2b-e18c9818e138
+                    firstName: PRINCIPAL
+                    lastName: TEST
+                    username: TEST_UNIVERSITY_COLLEGE_PRINCIPAL
+                    phoneNo: '3683601601'
+                    emailId: test_cplx_hr_subordinate@example.com
+                  selectedTenantId: COLLEGE
+                  selectedRoleIds:
+                    - UNIVERSITY.COLLEGE.PRINCIPAL
+              fileStoreId: 914446e5-c428-443b-8f8d-cc16ef8c06b3
+        required: true
+      responses:
+        '200':
+          description: OK - Binary File Stream (Byte Array)
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+                description: The raw binary stream of the file content, suitable for direct client download.
+        '401':
+          description: Unauthorized - Invalid security context or Bearer token.
+        '403':
+          description: Forbidden - User does not have access to the file based on the file's access policy.
+  /filestore/_getMyFileDetails:
+    get:
+      tags:
+        - File Management
+      summary: Get File Metadata by ID (Access Controlled)
+      description: |
+        Retrieves the complete metadata and access policy details (`FilestoreDetailsDto`) for a specific file.
+        
+        **Access Control:** Requires the full `FilestoreRequestInfo` object in the body for detailed authorization checks.
+      operationId: getMyFileDetails
+      requestBody:
+        description: '**MANDATORY:** JSON object containing the `FilestoreRequestInfo` (security context) and the file''s ID (`fileStoreId`).'
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              requestInfo:
+                authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                userInfo:
+                  userDetails:
+                    uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                    firstName: "PRINCIPAL"
+                    lastName: "TEST"
+                    username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                    phoneNo: "3683601601"
+                    emailId: "test_cplx_hr_subordinate@example.com"
+                  selectedTenantId: "COLLEGE"
+                  selectedRoleIds:
+                    - "UNIVERSITY.COLLEGE.PRINCIPAL"
+              fileStoreId: "e49a87d5-a851-45d2-a276-3ee0b58ebbbb"
+      responses:
+        '200':
+          description: OK - File Details Retrieved Successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  fileStoreDetailsDto:
+                    fileStoreId: "912f3f1e-8010-48b1-a505-04ac3e9b218b"
+                    moduleId: "MOD001"
+                    accessType: ""
+                    reason: "Reason for access"
+                    applicationNo: "APP-123456"
+                    accessToTenants:
+                      - "PF_ORG"
+                    accessToUserInstances:
+                      - "beabb3d3-82bd-4faf-b7ce-d248bd091ca0"
+                      - "123e4567-e89b-12d3-a456-556642440001"
+                    accessToTenantUserRoles:
+                      - tenantId: "VTU"
+                        roleId: "COLLEGE.ADMIN"
+        '401':
+          description: Unauthorized - Invalid security context or Bearer token.
+        '403':
+          description: Forbidden - User does not have access to the file.
+        '404':
+          description: Not Found - File ID does not exist.
+  /filestore/_delete:
+   post:
+    tags:
+      - File Management
+    summary: Delete File by ID (Access Controlled)
+    description: |
+      Deletes a file by its unique `fileStoreId` after performing full access control checks using the provided `requestInfo`.
+    operationId: deleteFile
+    requestBody:
+      description: '**MANDATORY:** JSON object containing the security context and the file''s ID.'
+      required: true
+      content:
+        application/json:
+          schema:
+            example:
+              requestInfo:
+                authToken: "007032fd-0b51-4dd9-872b-450178250220"
+                userInfo:
+                  userDetails:
+                    uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                    firstName: "PRINCIPAL"
+                    lastName: "TEST"
+                    username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                    phoneNo: "3683601601"
+                    emailId: "test_cplx_hr_subordinate@example.com"
+                  selectedTenantId: "COLLEGE"
+                  selectedRoleIds:
+                    - "UNIVERSITY.COLLEGE.PRINCIPAL"
+              fileStoreId: "066efc81-7b3d-4e88-83ee-0b33ab317cfb"
+    responses:
+      '200':
+        description: OK - File Deleted Successfully
+        content:
+          application/json:
+            schema:
+              example:
+                message: "Deleted Successfully"
+                messageCode: "FILE_DELETE_SUCCESS"
+                success: true
+      '401':
+        description: Unauthorized - Invalid security context.
+      '403':
+        description: Forbidden - User does not have deletion rights for the file.
+      '404':
+        description: Not Found - File ID does not exist.
+components:
+  schemas:
+    # ----------------------------------------------------
+    # 🏷️ TAGS: LOCALISATION SCHEMAS
+    # ----------------------------------------------------
+    Localization:
+      required:
+        - locale
+        - module
+      type: object
+      properties:
+        id:
+          type: string
+        locale:
+          type: string
+          pattern: '^(EN_IN|HI_IN)$'
+          description: Language and country code (EN_IN or HI_IN)
+        code:
+          type: string
+          pattern: '^[A-Z_0-9]{1,254}$'
+          description: Unique key for the message
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Message text to display to users
+        module:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Module name where the message belongs
+        templateId:
+          type: string
+          description: Optional template ID for dynamic messages
+    LocalizationSearchDto:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        module:
+          type: string
+        message:
+          type: string
+        templateId:
+          type: string
+        locale:
+          type: string
+        count:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
+    RedisSearchDto:
+      required:
+        - locale
+        - module
+      type: object
+      properties:
+        code:
+          type: string
+        module:
+          type: string
+        locale:
+          type: string
+    LocalizationDeleteDto:
+      required:
+        - id
+        - locale
+        - module
+      type: object
+      properties:
+        id:
+          type: string
+        module:
+          type: string
+        locale:
+          type: string
+    
+    # ----------------------------------------------------
+    # 🏷️ TAGS: FILE STORE SCHEMAS
+    # ----------------------------------------------------
+    FilestoreRequestInfo:
+      type: object
+      description: '**MANDATORY CONTEXT:** Standard object for passing essential security and user context for every API call.'
+      required:
+        - authToken
+        - userInfo
+      properties:
+        authToken:
+          type: string
+          description: The active session token for the user.
+          example: b7abead3-d7df-4f42-bf27-de7e1f38a65c
+        userInfo:
+          $ref: '#/components/schemas/FilestoreUserInfo'
+    FilestoreUserInfo:
+      type: object
+      description: Detailed information about the authenticated user and their current organizational context.
+      required:
+        - userDetails
+        - selectedTenantId
+      properties:
+        userDetails:
+          $ref: '#/components/schemas/FilestoreUser'
+        selectedTenantId:
+          type: string
+          description: The organization/tenant ID the user has selected.
+          example: PES
+        selectedRoleIds:
+          type: array
+          description: The list of roles the user possesses.
+          items:
+            type: string
+            example: UNIVERSITY.COLLEGE.PRINCIPAL
+    FilestoreUser:
+      type: object
+      description: Core identity details of the current user.
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: '**User UUID:** Unique User Identifier.'
+          example: ac39133e-52c1-49cb-96f3-d686ac5b51b6
+        firstName:
+          type: string
+          example: PRINCIPAL
+        lastName:
+          type: string
+          example: TEST
+        username:
+          type: string
+          example: TEST_UNIVERSITY_COLLEGE_PRINCIPAL
+        phoneNo:
+          type: string
+          description: User's primary phone number.
+          example: '9014654318'
+        emailId:
+          type: string
+          description: User's primary email address.
+          example: balu@gmail.com
+    FilestoreBucket:
+      type: object
+      description: Represents a storage bucket.
+      properties:
+        name:
+          type: string
+          description: The unique name of the storage bucket.
+          example:
+            - collage documents
+        creationDate:
+          type: string
+          format: date-time
+          description: Timestamp indincating when the bucket was created.
+    FilestoreTenantUserRoleAccess:
+      type: object
+      description: A specific combination of Tenant ID and Role ID for granular access control.
+      properties:
+        tenantId:
+          type: string
+          example: UNIVERSITY
+        roleId:
+          type: string
+          example: UNIVERSITY.COLLEGE.PRINCIPAL
+    FilestoreDetailsDto:
+      type: object
+      description: Data Transfer Object defining a file's metadata, ownership, and granular access policy.
+      required:
+        - moduleId
+        - accessType
+      properties:
+        fileStoreId:
+          type: string
+          format: uuid
+          description: '**FileStore ID (UUID):** Mandatory for UPDATE operations.'
+          example: 457069e3-eef7-41b8-97a2-981c154d50a6
+        moduleId:
+          type: string
+          description: '**MANDATORY:** The application module owner.'
+          example: MOD001
+        accessType:
+          type: string
+          description: '**MANDATORY: Security Policy.** `OPEN` or `RESTRICTED`.'
+          enum:
+            - OPEN
+            - RESTRICTED
+          example: RESTRICTED
+        reason:
+          type: string
+          description: Descriptive reason or context for the file storage.
+          example: Reason for access update
+        applicationNo:
+          type: string
+          description: An optional ID linking the file to a business transaction.
+          example: APP-123456
+        accessToTenantRoles:
+          type: array
+          description: List of Tenant IDs granted access (for RESTRICTED files).
+          items:
+            type: string
+        accessToUserInstances:
+          type: array
+          description: List of specific **User UUIDs** granted direct access (for RESTRICTED files).
+          items:
+            type: string
+            format: uuid
+            example: 76fffaf4-8706-4fbb-8075-9e44d4671dde
+        accessToTenantUserRoles:
+          type: array
+          description: Specific combinations of Tenant ID + Role ID granted access.
+          items:
+            $ref: '#/components/schemas/FilestoreTenantUserRoleAccess'
+    FilestoreIdDto:
+      type: object
+      description: DTO containing security context and the ID of the file for download or deletion.
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/FilestoreRequestInfo'
+        fileStoreId:
+          type: string
+          format: uuid
+          description: '**FileStore ID (UUID):** The unique identifier of the file.'
+          example: 914446e5-c428-443b-8f8d-cc16ef8c06b3
+    FilestoreDeleteResponse:
+      type: object
+      description: Standard response for a successful file deletion.
+      properties:
+        message:
+          type: string
+          description: A descriptive message indicating the outcome.
+          example: File with ID 457069e3-eef7-41b8-97a2-981c154d50a6 deleted successfully.
+        messageCode:
+          type: string
+          description: A unique code for the status message.
+          example: FILESTORE.DELETE.SUCCESS
+        success:
+          type: boolean
+          description: Indicates if the operation was successful.
+          example: true
+    FilestoreUploadDto:
+      type: object
+      description: Wrapper DTO used by the `_update` endpoint.
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/FilestoreRequestInfo'
+        fileStoreDetailsDto:
+          $ref: '#/components/schemas/FilestoreDetailsDto'
+    FilestoreResponse:
+      type: object
+      description: Standard response returned upon successful file creation or update.
+      properties:
+        filestore_id:
+          type: string
+          format: uuid
+          description: The unique ID (UUID) of the file.
+          example: 457069e3-eef7-41b8-97a2-981c154d50a6
+        user_uuid:
+          type: string
+          format: uuid
+          description: The UUID of the user who owns the file.
+          example: 897069e3-eef7-41b8-97a2-981c154d50a6
+        tenant_id:
+          type: string
+          description: The tenant ID under which the file was created.
+          example: PES
+        module_id:
+          type: string
+          description: The module ID specified.
+          example: MOD001
+    FilestoreDetailsResponse:
+      type: object
+      description: Response wrapper for detailed file metadata retrieval.
+      properties:
+        FileStoreDetailsDto:
+          $ref: '#/components/schemas/FilestoreDetailsDto'

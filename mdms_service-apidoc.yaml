@@ -1,0 +1,3129 @@
+openapi: 3.0.1
+info:
+  title: Platform Master Data Management Service (MDMS) API
+  description: |
+    **Service Name:** pf-mdms-service
+    **Port:** 8072
+    
+    This service is responsible for managing core platform metadata, including:
+    1. **Tenants:** Creation and management of organizational units.
+    2. **Roles:** Definition of user roles and their hierarchy.
+    3. **Resources & Access:** Defining API resources and mapping them to roles.
+    4. **Modules:** Managing feature modules and their tenant assignments.
+    5. **Bulk Operations:** Importing core data from Excel sheets.
+  version: v1.0.0
+servers:
+- url: http://localhost:8072/pf-mdms-service
+  description: MDMS Service Local Development Environment
+tags:
+  - name: tenant-controller
+    description: Operations for creating, searching, and managing Tenants/Organizations.
+  - name: role-controller
+    description: Operations for creating, searching, and managing Roles.
+  - name: resource-access-controller
+    description: Operations for creating, searching, and managing Resources (APIs, UI links) and their access.
+  - name: module-controller
+    description: Operations for managing Modules and their mapping to Tenants.
+  - name: mdms-2-controller
+    description: Operations for managing generic key-value Master Data (Mdms2).
+  - name: common-controller
+    description: Utility endpoints, including bulk data bootstrap.
+paths:
+  /common/_bulkFullMdmsBootstrap:
+    post:
+      tags:
+        - common-controller
+      summary: Bulk bootstrap for roles, tenants, resources, and access permissions from a single Excel sheet.
+      description: |
+        This API performs a comprehensive bulk operation for creating/updating core platform entities from a structured Excel file.
+      operationId: createBulkMdmsData
+      parameters:
+        - name: actionType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - DELETE_AND_UPDATE
+          description: |
+            **Action Type for Bulk Operation (Mandatory):**
+            Specifies the process flow. Currently, only one mode is supported:
+            
+            - **`DELETE_AND_UPDATE`**: This is a highly destructive operation. It performs a full sweep to delete all existing roles, tenants, user instances, resources, and associated access permissions from the database, and then proceeds to create new records based on the uploaded Excel file.
+        - name: filterSheets
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^(tenantRole_userRole|tenant|resources_and_accessList|modules|departments)(,(tenantRole_userRole|tenant|resources_and_accessList|modules|departments))*$"
+            example: "tenantRole_userRole,resources_and_accessList,tenant,modules,departments"
+          description: |
+            A comma-separated list of sheet names from the Excel file to process. Only sheets included in this list will be processed for deletion and creation.
+            
+            **Possible Sheet Names (Comma-Separated):**
+            - **tenantRole_userRole**: Processes data for deleting and re-creating existing Roles and default test User instances.
+            - **tenant**: Processes data for deleting and re-creating existing Tenants (Organizations).
+            - **resources_and_accessList**: Processes data for deleting and re-creating existing Resources (APIs/Links) and their Role Access mappings.
+            - **modules**: Processes data for deleting and re-creating existing Modules.
+            - **departments**: Processes data for deleting and re-creating existing Departments.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - requestInfo
+              properties:
+                requestInfo:
+                  $ref: '#/components/schemas/RequestInfo'
+                  description: |
+                    The standard `RequestInfo` object, passed as a form parameter (`type=application/json`). It contains details about the authenticated user initiating the request (e.g., UUID, selected Tenant ID, and roles), mandatory for auditing.
+                file:
+                  type: string
+                  format: binary
+                  description: The binary Excel file (e.g., `full_mdms_start_template.xlsx`) containing the structured master data for all entities (roles, tenants, resources, etc.). This file must be uploaded as a multipart attachment.
+      responses:
+        '200':
+          description: OK - Successful bulk creation and update.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkFullMdmsBootstrapResponse'
+  /role/_create:
+    post:
+      tags:
+        - role-controller
+      summary: Creates a new Role (USER or TENANT) in the system.
+      description: |
+        This API is responsible for creating a new role.
+        - **Role Type Logic**: If a new role is of `USER` type (e.g., HEADMASTER), it **must** specify a `parentRoleId`.
+        - **Parent Role Constraint**: The specified `parentRoleId` must refer to an existing Role entity that has the `TENANT` type (e.g., COLLEGE), thereby establishing a proper hierarchy.
+        
+        The API returns the complete created Role object upon success (Status 200/201).
+      operationId: createRole
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              requestInfo:
+                userInfo:
+                  userDetails:
+                    uuid: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                    firstName: "PRINCIPAL"
+                    lastName: "TEST"
+                    username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                    phoneNo: "3683601601"
+                    emailId: "test_cplx_hr_subordinate@example.com"
+                  selectedTenantId: "COLLAGE"
+                  selectedRoleIds:
+                    - "UNIVERSITY.COLLEGE.PRINCIPAL"
+              roleDto:
+                name: "HEADMASTER"
+                description: "desc"
+                type: "USER"
+                parentRoleId: "COLLAGE"
+
+      responses:
+        '200':
+          description: OK - The Role was successfully created and is returned.
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                id: "COLLEGE.HEADMASTER"
+                name: "HEADMASTER"
+                description: "desc"
+                type: "USER"
+                parentRole:
+                  id: "COLLEGE"
+                  name: "COLLEGE"
+                  description: "desc"
+                  type: "TENANT"
+                  auditDetails:
+                    createdBy: ""
+                    lastModifiedBy: ""
+                    createdTime: 1705726571136
+                    lastModifiedTime: 1705726571136
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1705726571136
+                  lastModifiedTime: 1705726571136
+
+  /role/_bulkCreateRoles:
+    post:
+      tags:
+        - role-controller
+      summary: Bulk creation of Roles from an Excel Sheet.
+      description: |
+        This API allows for the bulk creation of multiple Roles (TENANT and USER types) by uploading a structured Excel file.
+      operationId: bulkCreateRoles
+      parameters:
+        - name: actionType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - DELETE_AND_UPDATE
+          description: |
+            **Action Type for Bulk Operation (Mandatory):**
+            Specifies the process flow. Currently, only one mode is supported:
+            
+            - **`DELETE_AND_UPDATE`**: This is a destructive operation. It first removes existing roles, tenants, and test user instances from the database, and then proceeds to create new roles based on the uploaded file.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - requestInfo
+              properties:
+                requestInfo:
+                  $ref: '#/components/schemas/RequestInfo'
+                  description: |
+                    The standard `RequestInfo` object, passed as a form parameter (`type=application/json`). It contains authentication and session details (e.g., UUID, selected Tenant ID).
+                file:
+                  type: string
+                  format: binary
+                  description: The Excel file (e.g., `tenantRoleAndUserRole_creation_template.xlsx`) containing the structured Role data (both TENANT and USER roles) to be uploaded as a multipart attachment.
+      responses:
+        '200':
+          description: OK - Successful bulk creation and update of roles.
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                totalRolesSentForCreation: 1
+                totalRolesNotCreated: 0
+                totalRolesCreated: 1
+                rolesCreated:
+                  - id: "PF_ORG"
+                    name: "PF_ORG"
+                    description: "Platform sample tenant"
+                    type: "TENANT"
+                    parentRole: null
+                    auditDetails:
+                      createdBy: "123e4567-e89b-12d3-a456-426614174000"
+                      lastModifiedBy: "123e4567-e89b-12d3-a456-426614174000"
+                      createdTime: 1750412279226
+                      lastModifiedTime: 1750412279226
+                errorDescList: []
+
+  /role/_update:
+    post:
+      tags:
+        - role-controller
+      summary: Updates an existing Role in the system.
+      description: |
+        This API is responsible for updating the details of an existing Role (Tenant or User Role).
+        
+        **Note:** The `roleDto` in the request body must contain the unique `id` of the Role to be updated. The response includes the fully updated Role object.
+      operationId: updateRole
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleRequestDto'
+            examples:
+              updateExample:
+                value:
+                  requestInfo:
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  roleDto:
+                    id: "HEADMASTER" # This is the ID of the role being updated
+                    name: "HEADMASTER"
+                    description: "Updated description for Headmaster role" # Example of an updated field
+                    type: "USER"
+        required: true
+      responses:
+        '200':
+          description: OK - The Role was successfully updated and is returned.
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                id: "HEADMASTER"
+                name: "HEADMASTER"
+                description: "desc"
+                type: "USER"
+                parentRole:
+                  id: "SCHOOL"
+                  name: "SCHOOL"
+                  description: "desc"
+                  type: "TENANT"
+                  parentRole: null
+                  auditDetails:
+                    createdBy: ""
+                    lastModifiedBy: ""
+                    createdTime: 1705726571136
+                    lastModifiedTime: 1705726571136
+                auditDetails:
+                  createdBy: null
+                  lastModifiedBy: ""
+                  createdTime: null
+                  lastModifiedTime: 1705726629993
+  /role/_delete:
+    post:
+      tags:
+        - role-controller
+      summary: Deletes an existing Role from the system.
+      description: |
+        This API performs a soft or hard deletion of a Role based on the unique `id` provided in the `roleDto`.
+        
+        **Important:** The `roleDto` must contain the unique `id` of the Role to be deleted.
+      operationId: deleteRole
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleRequestDto'
+            examples:
+              deleteExample:
+                value:
+                  requestInfo:
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  roleDto:
+                    id: "HEADMASTER" # Unique ID of the role to be deleted
+                    name: "HEADMASTER"
+                    type: "USER"
+        required: true
+      responses:
+        '200':
+          description: OK - The Role was successfully deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+  /role/_search:
+    post:
+      tags:
+        - role-controller
+      summary: Searches for Roles based on various criteria.
+      description: |
+        This API is responsible for searching roles in the system. Search criteria are passed via URL query parameters, and context information is provided in the request body.
+      operationId: searchRoles
+      parameters:
+        - name: roleId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by the unique ID of the Role (e.g., "PF_ORG.PF_USER").
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by the name of the Role (e.g., "PF_USER").
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [USER, TENANT]
+          description: Filter by the type of the Role (USER or TENANT).
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter Roles belonging to a specific Tenant ID (e.g., "COLLEGE").
+        - name: emailId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter Roles associated with a user having this email ID.
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+          description: The maximum number of records to return (page size).
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 0
+          description: The number of records to skip (pagination offset).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              requestInfo:
+                userInfo:
+                  userDetails:
+                    uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                    firstName: "PRINCIPAL"
+                    lastName: "TEST"
+                    username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                    phoneNo: "3683601601"
+                    emailId: "test_cplx_hr_subordinate@example.com"
+                  selectedTenantId: "COLLEGE"
+                  selectedRoleIds:
+                    - "UNIVERSITY.COLLEGE.PRINCIPAL"
+              emailId: "TEST_evbuddy_host_admin@example.com"
+        required: true
+      responses:
+        '200':
+          description: OK - A list of matching Role objects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Role'
+  /tenant/_create:
+    post:
+      tags:
+        - tenant-controller
+      summary: Creates a new Tenant/Organization in the system.
+      description: |
+        This API is responsible for the creation of a new Tenant entity.
+        
+        **Constraints:**
+        - The `roleId` provided in the request must reference an existing Role that is of type `TENANT`.
+        - The new Tenant can optionally be linked to a parent organization via `parentTenant`.
+      operationId: createTenant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              requestInfo:
+                authToken:
+                  "007032fd-0b51-4dd9-872b-450178250220"
+                userInfo:
+                  userDetails:
+                    uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                    firstName: "PRINCIPAL"
+                    lastName: "TEST"
+                    username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                    phoneNo: "3683601601"
+                    emailId: "test_cplx_hr_subordinate@example.com"
+                  selectedTenantId: "COLLEGE"
+                  selectedRoleIds:
+                    - "UNIVERSITY.COLLEGE.PRINCIPAL"
+              renantDto:
+                    name: "TEST_ORG"
+                    description: "desc"
+                    roleId: "PF_ORG"
+
+        required: true
+      responses:
+        '201':
+          description: CREATED - The Tenant was successfully created and is returned.
+          content:
+            application/json:
+              type: object
+              example:
+                id: "TEST_ORG"
+                name: "TEST_ORG"
+                description: "desc"
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1715840086410
+                  lastModifiedTime: 1715840086410
+                tenant2RoleMap:
+                  - uuid: "afd3dbe1-7702-4309-bd54-2cb5e36a9d3a"
+                    role:
+                      id: "SUPER_ORG"
+                      name: "SUPER_ORG"
+                      description: "Super Tenant"
+                      path: "super_tenant"
+                      type: "TENANT"
+                      auditDetails:
+                        createdBy: ""
+                        lastModifiedBy: ""
+                        createdTime: 1715758600922
+                        lastModifiedTime: 1715758600922
+                tenant2TenantMap: null
+  /tenant/_bulkCreateTenant:
+   post:
+    tags:
+      - tenant-controller
+    summary: Bulk creation and update of Tenants from an Excel Sheet.
+    description: |
+      This API processes a structured Excel file to perform bulk creation or update of Tenants (Organizations).
+    operationId: bulkCreateTenant
+    parameters:
+      - name: actionType
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+            - DELETE_AND_UPDATE
+            - UPDATE
+        description: |
+          - **`DELETE_AND_UPDATE`**: Removes existing tenants and creates new ones.
+          - **`UPDATE`**: Updates or creates if not already in database.
+      - name: delete_test_instances
+        in: query
+        required: true
+        schema:
+          type: string
+          enum: ["true", "false"]
+        description: |
+          - **`true`**: Delete Test Tenants and Test Users.
+          - **`false`**: Don’t delete Test Tenants and Test Users.
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required:
+              - file
+              - requestInfo
+              - actionType
+              - delete_test_instances
+            properties:
+              requestInfo:
+                type: string
+                description: Standard Request Information header (sent as stringified JSON).
+                example: |
+                  {
+                    "userInfo": {
+                      "userDetails": {
+                        "uuid": "123e4567-e89b-12d3-a456-426614174000",
+                        "firstName": "John",
+                        "middleName": "A.",
+                        "lastName": "Doe"
+                      },
+                      "selectedTenantId": "PF_ORG",
+                      "selectedRoleIds": [
+                        "PF_ORG.PF_ADMIN"
+                      ]
+                    }
+                  }
+              file:
+                type: string
+                format: binary
+                description: The Excel file containing the structured Tenant data.
+              actionType:
+                type: string
+                example: "DELETE_AND_UPDATE"
+              delete_test_instances:
+                type: string
+                example: "false"
+    responses:
+      '200':
+        description: OK - Successful bulk creation and update of tenants.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              totalTenantsSentForCreation: 4
+              totalTenantsNotCreated: 1
+              totalTenantsCreated: 3
+              tenantsCreated:
+                - id: "VTU"
+                  name: "VTU"
+                  description: "Vishweshwaraih Technological Institute"
+                  code: "TENANT-1750227232654"
+                  sbuCode: null
+                  auditDetails:
+                    createdBy: "123e4567-e89b-12d3-a456-426614174000"
+                    lastModifiedBy: "123e4567-e89b-12d3-a456-426614174000"
+                    createdTime: 1750227232654
+                    lastModifiedTime: 1750227232654
+                  tenant2RoleMap:
+                    - uuid: "799d173f-7830-4881-bea3-854eff0be12e"
+                      role:
+                        id: "UNIVERSITY"
+                        name: "UNIVERSITY"
+                        description: "University Level"
+                        type: "TENANT"
+                        auditDetails:
+                          createdBy: "123e4567-e89b-12d3-a456-426614174000"
+                          lastModifiedBy: "123e4567-e89b-12d3-a456-426614174000"
+                          createdTime: 1750223442132
+                          lastModifiedTime: 1750223442132
+                  tenant2TenantMap: null
+              errorDescList: []
+  /tenant/_update:
+    post:
+      tags:
+        - tenant-controller
+      summary: Updates an existing Tenant/Organization in the system.
+      description: |
+        This API is responsible for updating the attributes (like name, description, and associated role/parent) of an existing Tenant entity.
+        
+        **Note:** The `tenantDto` in the request body must contain the unique `id` of the Tenant to be updated. The system updates the `lastModifiedTime` and `lastModifiedBy` in the `auditDetails`.
+      operationId: updateTenant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantRequestDto'
+            examples:
+              updateExample:
+                value:
+                  requestInfo:
+                    userInfo:
+                      userDetails:
+                        uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                        firstName: "PRINCIPAL"
+                        lastName: "TEST"
+                        username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                        phoneNo: "3683601601"
+                        emailId: "test_cplx_hr_subordinate@example.com"
+                      selectedTenantId: "COLLEGE"
+                      selectedRoleIds:
+                        - "UNIVERSITY.COLLEGE.PRINCIPAL"
+                  tenantDto:
+                    id: "TEST_ORG" # Mandatory ID of the Tenant being updated
+                    name: "TEST_ORG"
+                    description: "Updated description for TEST_ORG" # Example of an updated field
+                    roleId: "PF_ORG"
+        required: true
+      responses:
+        '200':
+          description: OK - The Tenant was successfully updated and is returned.
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                id: "TEST_ORG"
+                name: "TEST_ORG"
+                description: "new desc"
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: ""
+                  lastModifiedTime: 1715840086410
+                tenant2RoleMap:
+                  - uuid: "afd3dbe1-7702-4309-bd54-2cb5e36a9d3a"
+                    role:
+                      id: "SUPER_ORG"
+                      name: "SUPER_ORG"
+                      description: "Super Tenant"
+                      type: "TENANT"
+                      auditDetails:
+                        createdBy: ""
+                        lastModifiedBy: ""
+                        createdTime: 1715758600922
+                        lastModifiedTime: 1715758600922
+                tenant2TenantMap: null
+  /tenant/_delete:
+    post:
+      tags:
+        - tenant-controller
+      summary: Deletes an existing Tenant/Organization from the system.
+      description: |
+        This API performs the deletion (likely a soft delete) of a Tenant based on the unique `id` provided in the `tenantDto`.
+        
+        **Important:** The `tenantDto` in the request body must contain the unique `id` of the Tenant to be deleted.
+      operationId: deleteTenant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              requestInfo:
+                userInfo:
+                  userDetails:
+                    uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                    firstName: "PRINCIPAL"
+                    lastName: "TEST"
+                    username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                    phoneNo: "3683601601"
+                    emailId: "test_cplx_hr_subordinate@example.com"
+                  selectedTenantId: "COLLEGE"
+                  selectedRoleIds:
+                    - "UNIVERSITY.COLLEGE.PRINCIPAL"
+              tenantDto:
+                id: "TEST_ORG"
+                name: "TEST_ORG"
+                description: "new desc"
+                parentTenant: "SUPER_ORG"
+                roleId: "PF_ORG"
+            
+      responses:
+        '200':
+          description: OK - The Tenant was successfully deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+  /tenant/_search:
+    post:
+      tags:
+        - tenant-controller
+      summary: Searches for Tenants/Organizations based on various criteria.
+      description: |
+        This API is responsible for searching Tenant entities in the system. The search filters are passed as URL query parameters, while the necessary session/user context is provided in the request body.
+      operationId: searchTenants
+      parameters:
+        - name: id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by the unique ID of the Tenant (e.g., "PF_ORG").
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by the name of the Tenant.
+        - name: roleIds
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+          description: A list of Role IDs to filter by. Only tenants associated with any of these roles will be returned.
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+          description: The maximum number of records to return (page size).
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 0
+          description: The number of records to skip for pagination.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              requestInfo:
+                userInfo:
+                  userDetails:
+                    uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                    firstName: "PRINCIPAL"
+                    lastName: "TEST"
+                    username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                    phoneNo: "3683601601"
+                    emailId: "test_cplx_hr_subordinate@example.com"
+                  selectedTenantId: "COLLEGE"
+                  selectedRoleIds:
+                    - "UNIVERSITY.COLLEGE.PRINCIPAL"
+        required: true
+      responses:
+        '200':
+          description: OK - A list of matching Tenant objects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+              example:
+                - id: "PF_ORG"
+                  name: "PF_ORG"
+                  description: "new desc"
+                  auditDetails:
+                    createdBy: ""
+                    lastModifiedBy: ""
+                    createdTime: ""
+                    lastModifiedTime: 1715840086410
+                  tenant2RoleMap:
+                    - uuid: "afd3dbe1-7702-4309-bd54-2cb5e36a9d3a"
+                      role:
+                        id: "SUPER_ORG"
+                        name: "SUPER_ORG"
+                        description: "Super Tenant"
+                        type: "TENANT"
+                        auditDetails:
+                          createdBy: ""
+                          lastModifiedBy: ""
+                          createdTime: 1715758600922
+                          lastModifiedTime: 1715758600922
+                  tenant2TenantMap: null
+  /resource/_create:
+    post:
+      tags:
+        - resource-controller
+      summary: Creates a new Resource (API endpoint, Menu, or URL) in the system.
+      description: |
+        This API is responsible for creating a new Resource entity. The fields required depend on the `type` specified:
+        
+        - **If `type` is 'API'**: The `apiEndpoint` field must be filled.
+        - **If `type` is 'HMENU', 'VMENU', or 'URL'**: Fields like `displayName`, `altName`, `path`, `orderNo`, `icon`, and `link` are typically used for UI/navigation purposes.
+      operationId: createResource
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              requestInfo:
+                userInfo:
+                  userDetails:
+                    uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                    firstName: "PRINCIPAL"
+                    lastName: "TEST"
+                    username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                    phoneNo: "3683601601"
+                    emailId: "test_cplx_hr_subordinate@example.com"
+                  selectedTenantId: "COLLEGE"
+                  selectedRoleIds:
+                    - "UNIVERSITY.COLLEGE.PRINCIPAL"
+              resourceDto:
+                code: "RESAPI43"
+                displayName: "/ev-host-mgt/host/agent/_searchMyRequest"
+                type: "API"
+                enabled: true
+                apiEndpoint: "/ev-host-mgt/host/agent/_searchMyRequest"
+      responses:
+        '201':
+          description: CREATED - The Resource was successfully created and is returned.
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                id: "RESAPI43"
+                displayName: "/ev-host-mgt/host/agent/_searchMyRequest"
+                altName: null
+                type: "API"
+                path: null
+                orderNo: null
+                icon: null
+                enabled: true
+                link: null
+                apiEndpoint: "/ev-host-mgt/host/agent/_searchMyRequest"
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1705732947086
+                  lastModifiedTime: 1705732947086
+  
+  /resource/_bulkCreateResource:
+   post:
+    tags:
+      - resource-controller
+    summary: Bulk creation and update of Resources (APIs, Menus, URLs) from an Excel Sheet.
+    description: |
+      This API processes a structured Excel file to perform bulk creation or update of Resource entities.
+    operationId: bulkCreateResource
+    parameters:
+      - name: actionType
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+            - DELETE_AND_UPDATE
+            - UPDATE
+        description: |
+          **Action Type for Bulk Operation (Mandatory):**
+          Specifies how to handle existing resource data:
+          - **`DELETE_AND_UPDATE`**: Removes ALL existing resources and creates new ones.
+          - **`UPDATE`**: Updates existing resources or creates them if they do not exist.
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required:
+              - file
+              - requestInfo
+            properties:
+              requestInfo:
+                type: string
+                description: Standard Request Information header (must be sent as application/json string).
+                example: |
+                  {
+                    "userInfo": {
+                      "userDetails": {
+                        "uuid": "123e4567-e89b-12d3-a456-426614174000",
+                        "firstName": "John",
+                        "middleName": "A.",
+                        "lastName": "Doe"
+                      },
+                      "selectedTenantId": "PF_ORG",
+                      "selectedRoleIds": ["PF_ADMIN"]
+                    }
+                  }
+              file:
+                type: string
+                format: binary
+                description: The Excel file (Resource.Template1.xlsx) containing the structured Resource data.
+              actionType:
+                type: string
+                example: "DELETE_AND_UPDATE"
+    responses:
+      '200':
+        description: OK - Successful bulk creation and update of resources.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              totalResourcesSentForCreation: 1
+              totalResourcesNotCreated: 0
+              totalResourcesCreated: 1
+              resourcesCreated:
+                - id: "RESAPI02"
+                  displayName: "/pf-dashboard-service/_getData/FileterLocationPsList"
+                  altName: null
+                  type: "API"
+                  path: null
+                  orderNo: null
+                  icon: null
+                  enabled: true
+                  link: null
+                  apiEndpoint: "/pf-dashboard-service/_getData/FileterLocationPsList"
+                  auditDetails: null
+              errorDescList: []
+  /resource/_update:
+   post:
+    tags:
+      - resource-controller
+    summary: Updates an existing Resource in the system.
+    description: |
+      This API is responsible for updating the details of an existing Resource (API, Menu, or URL).
+      
+      **Note:** The `resourceDto` in the request body must contain the unique `id` of the Resource to be updated. The system updates the `lastModifiedTime` and `lastModifiedBy` in the `auditDetails`.
+    operationId: updateResource
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            resourceDto:
+              id: "RESAPI43"
+              altName: "r1"
+              displayName: "r1"
+              type: "VMENU"
+              path: "irs.create_complaint"
+              orderNo: "1"
+              icon: null
+              enabled: true
+              link: "irs/createCompliantForm"
+    responses:
+      '200':
+        description: OK - The Resource was successfully updated and is returned.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              id: "RESAPI43"
+              altName: "r1"
+              displayName: "r1"
+              type: "VMENU"
+              path: "irs.create_complaint"
+              orderNo: "1"
+              icon: null
+              enabled: true
+              link: "irs/createCompliantForm"
+              auditDetails:
+                createdBy: null
+                lastModifiedBy: ""
+                createdTime: null
+                lastModifiedTime: 1705733099652
+  /resource/_delete:
+   post:
+    tags:
+      - resource-controller
+    summary: Deletes an existing Resource from the system.
+    description: |
+      This API performs the deletion (likely a soft delete) of a Resource based on the unique `id` provided in the `resourceDto`.
+      
+      **Important:** The `resourceDto` in the request body must contain the unique `id` of the Resource to be deleted.
+    operationId: deleteResource
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            resourceDto:
+              id: "RESVMENU01"
+              altName: "r1"
+              displayName: "r1"
+              type: "VMENU"
+              path: "/"
+              orderNo: "1"
+              icon: null
+              link: "application/list"
+              enabled: true
+    responses:
+      '200':
+        description: OK - The Resource was successfully deleted.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              success: true
+  /resource/_search:
+   post:
+    tags:
+      - resource-controller
+    summary: Searches for Resources (APIs, Menus) based on associated roles or user.
+    description: |
+      This API retrieves a list of Resources filtered by their association with a specific Role ID, Role Name, or a User UUID. Search criteria are passed via URL query parameters, and the user context is passed in the request body.
+    operationId: searchResources
+    parameters:
+      - name: roleId
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter resources by the ID of the Role they are associated with (e.g., "PF_ADMIN").
+      - name: roleName
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter resources by the name of the Role they are associated with (e.g., "CLASS").
+      - name: userUuid
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+        description: Filter resources by the User UUID that has access to them.
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+        description: The maximum number of records to return (page size).
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+        description: The number of records to skip for pagination.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            userInfo:
+              userDetails:
+                uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                firstName: "PRINCIPAL"
+                lastName: "TEST"
+                username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                phoneNo: "3683601601"
+                emailId: "test_cplx_hr_subordinate@example.com"
+              selectedTenantId: "COLLEGE"
+              selectedRoleIds:
+                - "UNIVERSITY.COLLEGE.PRINCIPAL"
+    responses:
+      '200':
+        description: OK - A list of matching Resource objects.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+            example:
+              - id: "RESVMENU1"
+                altName: "Application - Accepted"
+                displayName: "Application - Accepted"
+                type: "VMENU"
+                path: "application.statistics.accepted.link2"
+                orderNo: "11"
+                icon: "3m"
+                enabled: true
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1705984446464
+                  lastModifiedTime: 1705984446464
+              - id: "RESHMENU1"
+                altName: "New Application"
+                displayName: "New Application"
+                type: "HMENU"
+                path: "this.is.for.the.check"
+                orderNo: "12"
+                icon: "3m"
+                enabled: false
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1705984466355
+                  lastModifiedTime: 1705984466355
+  /resource/_searchV1:
+   post:
+    tags:
+      - resource-controller
+    summary: Searches for Resources using a structured Request Body (Version 1).
+    description: |
+      This API is responsible for searching Resources (APIs, Menus, etc.) by multiple parameters provided in the `resourceSearchDto` within the request body.
+    operationId: searchResourcesV1
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            resourceSearchDto:
+              id: "RESAPI15"
+              type: "API"
+              apiEndpoint: "/ev-charger-mgmt/charger/utilityCompany/_update"
+              enabled: true
+    responses:
+      '200':
+        description: OK - A list of matching Resource objects.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+            example:
+              - id: "RESAPI15"
+                displayName: "/ev-charger-mgmt/charger/utilityCompany/_update"
+                altName: ""
+                type: "API"
+                path: null
+                orderNo: null
+                icon: null
+                enabled: true
+                link: null
+                apiEndpoint: "/ev-charger-mgmt/charger/utilityCompany/_update"
+                auditDetails:
+                  createdBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                  lastModifiedBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                  createdTime: 1719042282489
+                  lastModifiedTime: 1719042282489
+  /resource/access/_create:
+   post:
+    tags:
+      - resource-access-controller
+    summary: Grants a Role access to a specific Resource.
+    description: |
+      This API is responsible for creating an association between a Resource (API, Menu, etc.) and a Role, thereby granting the Role permission to access the Resource.
+    operationId: createResourceAccess
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            resourceAccessDto:
+              roleId: "50c39569-15d9-447c-b426-2c96bafcc755"
+              resourceId: "413caef1-67f5-4cc1-bb42-d7d7bdc11b5f"
+    responses:
+      '201':
+        description: CREATED - The Resource Access link was successfully created and details are returned.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              uuid: "52f62fcd-61b1-40fd-bd3a-c8c4867a5de0"
+              resource:
+                id: "RESVMENU1"
+                altName: "Statistics"
+                displayName: "Statistics"
+                type: "VMENU"
+                path: "statistics"
+                orderNo: "2"
+                icon: null
+                enabled: false
+                link: "application/"
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1709101188910
+                  lastModifiedTime: 1709101188910
+              role:
+                id: "COLLEGE.SCHOOL.STUDENT"
+                name: "STUDENT"
+                description: "desc"
+                type: "USER"
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1707817069077
+                  lastModifiedTime: 1707817069077
+              auditDetails:
+                createdBy: ""
+                lastModifiedBy: ""
+                createdTime: 1709197984799
+                lastModifiedTime: 1709197984799
+  /resource/access/_bulkCreateResourceAccess:
+   post:
+    tags:
+      - resource-access-controller
+    summary: Bulk creation and update of Resource-to-Role Access Mappings from an Excel Sheet.
+    description: |
+      This API processes a structured Excel file to establish or modify resource access permissions for multiple roles simultaneously.
+    operationId: bulkCreateResourceAccess
+    parameters:
+      - name: actionType
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+            - DELETE_AND_UPDATE
+            - UPDATE
+        description: |
+          **Action Type for Bulk Operation (Mandatory):**
+          Specifies how to handle existing mappings:
+          - **`DELETE_AND_UPDATE`**: Removes ALL existing Resource Access Mappings from the database and then creates new ones from the file.
+          - **`UPDATE`**: Updates existing mappings by removing old ones and creating new ones based on the file content.
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required:
+              - file
+              - requestInfo
+              - actionType
+            properties:
+              requestInfo:
+                type: string
+                description: Standard Request Information header (must be sent as application/json part).
+                example: |
+                  {
+                    "userInfo": {
+                      "userDetails": {
+                        "uuid": "123e4567-e89b-12d3-a456-426614174000",
+                        "firstName": "John",
+                        "middleName": "A.",
+                        "lastName": "Doe"
+                      },
+                      "selectedTenantId": "PF_ORG",
+                      "selectedRoleIds": ["PF_ADMIN"]
+                    }
+                  }
+              file:
+                type: string
+                format: binary
+                description: The Excel file (e.g., `resource_access_creation_template.xlsx`) containing the Role ID and Resource ID pairs.
+              actionType:
+                type: string
+                example: "UPDATE"
+                enum:
+                  - DELETE_AND_UPDATE
+                  - UPDATE
+    responses:
+      '200':
+        description: OK - Successful bulk creation and update of resource access mappings.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              totalResourceAccessSentForCreation: 1
+              totalResourceAccessNotCreated: 0
+              totalResourceAccessCreated: 1
+              resourceAccessCreated:
+                - uuid: "a922ddbc-547c-4642-8532-03c0280d3921"
+                  resource:
+                    id: "RESAPI02"
+                    displayName: "/pf-dashboard-service/_getData/FileterLocationPsList"
+                    altName: null
+                    type: "API"
+                    path: null
+                    orderNo: null
+                    icon: null
+                    enabled: true
+                    link: null
+                    apiEndpoint: "/pf-dashboard-service/_getData/FileterLocationPsList"
+                    auditDetails: null
+                  role:
+                    id: "ORG.PS_HEAD"
+                    name: "PS_HEAD"
+                    description: "This is an User role: 'PS_HEAD'."
+                    type: "USER"
+                    auditDetails:
+                      createdBy
+  /resource/access/_update:
+   post:
+    tags:
+      - resource-access-controller
+    summary: Updates a Resource Access mapping between a Role and a Resource.
+    description: |
+      This API allows for the modification of an existing association between a Role and a Resource. The unique `uuid` of the access mapping must be provided in the `resourceAccessDto`.
+    operationId: updateResourceAccess
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            resourceAccessDto:
+              uuid: "4365d2b2-65h4-7c3d-3983-2ac71299b424"
+              resourceId: "RESVMENU01"
+              roleId: "COLLEGE.SCHOOL.STUDENT"
+    responses:
+      '200':
+        description: OK - The Resource Access mapping was successfully updated and the resulting object is returned.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              uuid: "4365d2b2-65h4-7c3d-3983-2ac71299b424"
+              resource:
+                id: "RESVMENU01"
+                altName: "Statistics"
+                displayName: "Statistics"
+                type: "VMENU"
+                path: "statistics"
+                orderNo: "2"
+                icon: null
+                enabled: false
+                link: "application/"
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1709101188910
+                  lastModifiedTime: 1709101188910
+              role:
+                id: "COLLEGE.SCHOOL.STUDENT"
+                name: "STUDENT"
+                description: "desc"
+                type: "USER"
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1707817069077
+                  lastModifiedTime: 1707817069077
+              auditDetails:
+                createdBy: ""
+                lastModifiedBy: ""
+                createdTime: 1709197984799
+                lastModifiedTime: 1709197984799
+  /resource/access/_delete:
+   post:
+    tags:
+      - resource-access-controller
+    summary: Revokes a Role's access to a specific Resource.
+    description: |
+      This API is responsible for deleting (revoking) the association between a Resource and a Role based on the unique UUID of the mapping record. This effectively denies access to the resource for the associated role.
+    operationId: deleteResourceAccess
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            resourceAccessDto:
+              uuid: "4365d2b2-65h4-7c3d-3983-2ac71299b424"
+    responses:
+      '200':
+        description: OK - The Resource Access link was successfully deleted (revoked).
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              success: true
+  /resource/access/_search:
+   post:
+    tags:
+      - resource-access-controller
+    summary: Searches for Role-Resource Access mappings by Role ID or User UUID.
+    description: |
+      This API retrieves a list of explicit mappings between Resources and Roles (`ResourceAccess` objects). The search filters are applied via URL query parameters, while the user context is provided in the request body.
+      
+      **Note:** To search for the resources accessible to a user by providing the user_id, use resource/access/_searchMyAccess API.
+    operationId: searchResourceAccess
+    parameters:
+      - name: roleId
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter Resource Access records by the ID of the Role involved (e.g., "COLLEGE.SCHOOL.STUDENT").
+      - name: userUuid
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+        description: Filter Resource Access records linked to any Role held by the specified User UUID.
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+        description: The maximum number of records to return (page size).
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+        description: The number of records to skip for pagination.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            userInfo:
+              userDetails:
+                uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                firstName: "PRINCIPAL"
+                lastName: "TEST"
+                username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                phoneNo: "3683601601"
+                emailId: "test_cplx_hr_subordinate@example.com"
+              selectedTenantId: "COLLEGE"
+              selectedRoleIds:
+                - "UNIVERSITY.COLLEGE.PRINCIPAL"
+    responses:
+      '200':
+        description: OK - A list of matching ResourceAccess objects.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+            example:
+              - uuid: "4dd2b7a0-b0bb-4f0d-951e-45d636a96d52"
+                resource:
+                  id: "RESHMENU01"
+                  name: "XYZ"
+                  displayName: "XYZ"
+                  type: "HMENU"
+                  path: "application at.accepted.link2"
+                  orderNo: "7"
+                  link: "application/"
+                  icon: "3m"
+                  enabled: true
+                  apiEndpoint: "/localization/_search"
+                  auditDetails:
+                    createdBy: ""
+                    lastModifiedBy: ""
+                    createdTime: 1706584997181
+                    lastModifiedTime: 1706584997181
+                role:
+                  id: "COLLEGE.SCHOOL.STUDENT"
+                  name: "STUDENT"
+                  description: "desc"
+                  type: "USER"
+                  auditDetails:
+                    createdBy: ""
+                    lastModifiedBy: ""
+                    createdTime: 1706510441588
+                    lastModifiedTime: 1706510441588
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1706587685158
+                  lastModifiedTime: 1706587685158
+  /resource/access/_searchMyAccess:
+   post:
+    tags:
+      - resource-access-controller
+    summary: Searches for all Resources accessible to the currently logged-in User.
+    description: |
+      This API retrieves a list of all Resource Access mappings for the User identified in the `RequestInfo` header. This is typically used to dynamically build a user's menu or permissions list on the client side based on their assigned roles.
+    operationId: searchMyResourceAccess
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+    responses:
+      '200':
+        description: OK - A list of ResourceAccess objects (mappings) accessible to the specified user.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+            example:
+              - uuid: "4dd2b7a0-b0bb-4f0d-951e-45d636a96d52"
+                resource:
+                  id: "RESHMENU01"
+                  altName: "XYZ"
+                  displayName: "XYZ"
+                  type: "HMENU"
+                  path: "application at.accepted.link2"
+                  orderNo: "7"
+                  link: "application/"
+                  icon: "3m"
+                  enabled: true
+                  auditDetails:
+                    createdBy: ""
+                    lastModifiedBy: ""
+                    createdTime: 1706584997181
+                    lastModifiedTime: 1706584997181
+                role:
+                  id: "COLLEGE.SCHOOL.STUDENT"
+                  name: "STUDENT"
+                  description: "desc"
+                  path: "student"
+                  type: "USER"
+                  auditDetails:
+                    createdBy: ""
+                    lastModifiedBy: ""
+                    createdTime: 1706510441588
+                    lastModifiedTime: 1706510441
+  /resource/access/_searchV1:
+   post:
+    tags:
+      - resource-access-controller
+    summary: Searches for Role-Resource Access mappings using structured criteria (Version 1).
+    description: |
+      This API is responsible for searching specific Resource Access mappings by filtering on the unique ID of the mapping, or by the IDs of the associated Role or Resource.
+    operationId: searchResourceAccessV1
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            accessSearchDto:
+              uuid: "023cec1c-3db6-4c06-b7f7-9f1089e917b6"
+              roleId: "EVBUDDY.TECH_SUPPPORT"
+              resourceId: "RESAPI115"
+    responses:
+      '200':
+        description: OK - A list of matching ResourceAccess objects.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+            example:
+              - uuid: "023cec1c-3db6-4c06-b7f7-9f1089e917b6"
+                resource:
+                  id: "RESAPI115"
+                  displayName: "/ev-ocpp-server/connector/_fetchLiveConnectorStatus"
+                  altName: null
+                  type: "API"
+                  path: null
+                  orderNo: null
+                  icon: null
+                  enabled: true
+                  link: null
+                  apiEndpoint: "/ev-ocpp-server/connector/_fetchLiveConnectorStatus"
+                  auditDetails:
+                    createdBy: "65348903-d9ab-4163-a033-acb3e252512b"
+                    lastModifiedBy: "65348903-d9ab-4163-a033-acb3e252512b"
+                    createdTime: 1724056497541
+                    lastModifiedTime: 1724056497541
+                role:
+                  id: "EVBUDDY.TECH_SUPPPORT"
+                  name: "TECH_SUPPORT"
+                  description: "Technical Support"
+                  type: "USER"
+                  auditDetails:
+                    createdBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                    lastModifiedBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                    createdTime: 1719042290511
+                    lastModifiedTime: 1719042290511
+                auditDetails:
+                  createdBy: "8a0337b6-3c27-471a-84ab-38a598b4d008"
+                  lastModifiedBy: "8a0337b6-3c27-471a-84ab-38a598b4d008"
+                  createdTime: 1724477201789
+                  lastModifiedTime: 1724477201789
+  /resource/access/_searchForGateway:
+   post:
+    tags:
+      - resource-access-controller
+    summary: Retrieves all Resource Access mappings for API Gateway authorization caching.
+    description: |
+      This API is intended for internal system components (like an API Gateway) to fetch the entire list of Resource-Role access mappings without pagination restrictions. This data is usually cached to facilitate rapid authorization checks across the platform.
+    operationId: searchResourceAccessForGateway
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+    responses:
+      '200':
+        description: OK - A complete list of all ResourceAccess objects in the system.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+            example:
+              - uuid: "023cec1c-3db6-4c06-b7f7-9f1089e917b6"
+                resource:
+                  id: "RESAPI115"
+                  displayName: "/ev-ocpp-server/connector/_fetchLiveConnectorStatus"
+                  altName: null
+                  type: "API"
+                  path: null
+                  orderNo: null
+                  icon: null
+                  enabled: true
+                  link: null
+                  apiEndpoint: "/ev-ocpp-server/connector/_fetchLiveConnectorStatus"
+                  auditDetails:
+                    createdBy: "65348903-d9ab-4163-a033-acb3e252512b"
+                    lastModifiedBy: "65348903-d9ab-4163-a033-acb3e252512b"
+                    createdTime: 1724056497541
+                    lastModifiedTime: 1724056497541
+                role:
+                  id: "EVBUDDY.TECH_SUPPPORT"
+                  name: "TECH_SUPPORT"
+                  description: "Technical Support"
+                  type: "USER"
+                  auditDetails:
+                    createdBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                    lastModifiedBy: "ebdfd603-d031-4150-bffb-4e595866071b"
+                    createdTime: 1719042290511
+                    lastModifiedTime: 1719042290511
+                auditDetails:
+                  createdBy: "8a0337b6-3c27-471a-84ab-38a598b4d008"
+                  lastModifiedBy: "8a0337b6-3c27-471a-84ab-38a598b4d008"
+                  createdTime: 1724477201789
+                  lastModifiedTime: 1724477201789
+  /modules/_create:
+   post:
+    tags:
+      - module-controller
+    summary: Creates a new Module in the system.
+    description: |
+      This API is responsible for creating a new module with a unique code, description, and enabled status.
+    operationId: createModule
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            moduleDto:
+              code: "MOD002"
+              desc: "Module 2 Description"
+              enable: true
+    responses:
+      '201':
+        description: CREATED - The Module was successfully created and is returned.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              id: "MOD002"
+              desc: "Module 2 Description"
+              enable: true
+              auditDetails:
+                createdBy: ""
+                lastModifiedBy: ""
+                createdTime: 1705727062359
+                lastModifiedTime: 1705727062359
+  /modules/_update:
+   post:
+    tags:
+      - module-controller
+    summary: Updates an existing Module in the system.
+    description: |
+      This API is responsible for updating the details of an existing module. The `moduleDto` in the request body must contain the unique `id` (which corresponds to the `code`) of the Module to be updated.
+    operationId: updateModule
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            moduleDto:
+              id: "MOD002"
+              desc: "New Module 2 Description"
+              enable: true
+    responses:
+      '200':
+        description: OK - The Module was successfully updated and is returned.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              id: "MOD002"
+              desc: "New Module 2 Description"
+              enable: true
+              auditDetails:
+                createdBy: null
+                lastModifiedBy: ""
+                createdTime: null
+                lastModifiedTime: 1706163042620
+  /modules/_delete:
+   post:
+    tags:
+      - module-controller
+    summary: Deletes a Module from the system.
+    description: |
+      This API performs the deletion (likely a soft delete) of a Module based on the unique `id` provided in the `moduleDto`.
+    operationId: deleteModule
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            moduleDto:
+              id: "MOD002"
+              desc: "New Module 2 Description"
+              enable: true
+    responses:
+      '200':
+        description: OK - The Module was successfully deleted.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              success: true
+  /modules/_search:
+   post:
+    tags:
+      - module-controller
+    summary: Searches for Modules based on ID and pagination parameters.
+    description: |
+      This API retrieves a list of Modules filtered by their unique `id` (code). Search criteria are passed via URL query parameters, and the user context is passed in the request body.
+    operationId: searchModules
+    parameters:
+      - name: id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter modules by the unique ID (code) of the module (e.g., "MOD001").
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+        description: The maximum number of records to return (page size).
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+        description: The number of records to skip for pagination.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            userInfo:
+              userDetails:
+                uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                firstName: "PRINCIPAL"
+                lastName: "TEST"
+                username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                phoneNo: "3683601601"
+                emailId: "test_cplx_hr_subordinate@example.com"
+              selectedTenantId: "COLLEGE"
+              selectedRoleIds:
+                - "UNIVERSITY.COLLEGE.PRINCIPAL"
+    responses:
+      '200':
+        description: OK - A list of matching Module objects.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+            example:
+              - id: "MOD001"
+                desc: "New Module 1 Description"
+                enable: true
+                auditDetails:
+                  createdBy: null
+                  lastModifiedBy: ""
+                  createdTime: null
+                  lastModifiedTime: 1706001028847
+  /modules/tenantmap/_create:
+   post:
+    tags:
+      - mdms-2-controller
+    summary: Creates a new Module-Tenant mapping.
+    description: |
+      This API establishes an association between a specific Module and a Tenant, controlling whether that module is active for the given tenant.
+    operationId: createModuleTenantMap
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            moduleTenantDto:
+              moduleId: "MOD002"
+              tenantId: "UNIVERSITY"
+              enable: true
+    responses:
+      '201':
+        description: CREATED - The Module-Tenant mapping was successfully created.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              uuid: "9f134800-fa90-49b4-9dfb-ac16a6f2aa9f"
+              module:
+                id: "MOD002"
+                desc: "Module 2 Description"
+                enable: false
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1704953716732
+                  lastModifiedTime: 1704953716732
+              tenant:
+                id: "UNIVERSITY"
+                name: "University of Science and Technology"
+                description: "A leading institution in science and technology education"
+                auditDetails: null
+              enable: true
+              auditDetails:
+                createdBy: ""
+                lastModifiedBy: ""
+                createdTime: 1705996714480
+                lastModifiedTime: 1705996714480
+  /modules/tenantmap/_update:
+   post:
+    tags:
+      - mdms-2-controller
+    summary: Updates an existing Module-Tenant mapping.
+    description: |
+      This API modifies the details of an existing Module-Tenant mapping. The unique `uuid` of the mapping must be provided in the `moduleTenantDto`. The primary field to update is often the `enable` status.
+    operationId: updateModuleTenantMap
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            moduleTenantDto:
+              uuid: "f1af9179-1722-414b-9666-8fca41e52aee"
+              moduleId: "MOD002"
+              tenantId: "UNIVERSITY"
+              enable: true
+    responses:
+      '200':
+        description: OK - The Module-Tenant mapping was successfully updated and is returned.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              uuid: "f1af9179-1722-414b-9666-8fca41e52aee"
+              module:
+                Id: "MOD002"
+                desc: "Module 2 Description"
+                enable: false
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1704953716732
+                  lastModifiedTime: 1704953716732
+              tenant:
+                id: "UNIVERSITY"
+                name: "University of Science and Technology"
+                description: "A leading institution in science and technology education"
+                auditDetails: null
+              enable: true
+              auditDetails:
+                createdBy: null
+                lastModifiedBy: ""
+                createdTime: null
+                lastModifiedTime: 1706162357498
+  /modules/tenantmap/_delete:
+   post:
+    tags:
+      - mdms-2-controller
+    summary: Deletes (revokes) a Module-Tenant mapping.
+    description: |
+      This API removes the association between a Module and a Tenant based on the unique UUID of the mapping record. This effectively disables the module for the specified tenant.
+    operationId: deleteModuleTenantMap
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            requestInfo:
+              userInfo:
+                userDetails:
+                  uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                  firstName: "PRINCIPAL"
+                  lastName: "TEST"
+                  username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                  phoneNo: "3683601601"
+                  emailId: "test_cplx_hr_subordinate@example.com"
+                selectedTenantId: "COLLEGE"
+                selectedRoleIds:
+                  - "UNIVERSITY.COLLEGE.PRINCIPAL"
+            moduleTenantDto:
+              uuid: "f1af9179-1722-414b-9666-8fca41e52aee"
+              moduleId: "MOD002"
+              tenantId: "UNIVERSITY"
+              enable: true
+    responses:
+      '200':
+        description: OK - The Module-Tenant mapping was successfully deleted.
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              success: true
+      responses:
+        '200':
+          description: OK - The Module-Tenant mapping was successfully deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+  /modules/tenantmap/_search:
+   post:
+    tags:
+      - mdms-2-controller
+    summary: Searches for Module-Tenant mappings based on various criteria.
+    description: |
+      This API retrieves a list of Module-Tenant maps, allowing filtering by UUID, Module ID, Tenant ID, and Tenant Name. Search criteria are passed via URL query parameters, and the user context is passed in the request body.
+    operationId: searchModuleTenantMap
+    parameters:
+      - name: uuid
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+        description: Filter by the unique UUID of the Module-Tenant mapping record.
+      - name: moduleId
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by the ID (code) of the Module involved.
+      - name: tenantId
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by the ID of the Tenant involved.
+      - name: tenantName
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by the name of the Tenant involved.
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+        description: The maximum number of records to return (page size).
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+        description: The number of records to skip for pagination.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+          example:
+            userInfo:
+              userDetails:
+                uuid: "d4755057-561b-4eea-af2b-e18c9818e138"
+                firstName: "PRINCIPAL"
+                lastName: "TEST"
+                username: "TEST_UNIVERSITY_COLLEGE_PRINCIPAL"
+                phoneNo: "3683601601"
+                emailId: "test_cplx_hr_subordinate@example.com"
+              selectedTenantId: "COLLEGE"
+              selectedRoleIds:
+                - "UNIVERSITY.COLLEGE.PRINCIPAL"
+    responses:
+      '200':
+        description: OK - A list of matching Module2TenantMap objects.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+            example:
+              - uuid: "e35bdae6-33d2-4626-b457-ae928a3d5a22"
+                module:
+                  id: "MOD003"
+                  desc: "Sample Module 3"
+                  enable: true
+                  auditDetails:
+                    createdBy: ""
+                    lastModifiedBy: ""
+                    createdTime: 1709265540100
+                    lastModifiedTime: 1709265540100
+                tenant:
+                  id: "UNIVERSITY"
+                  name: "test_UNIVERSITY"
+                  description: "test"
+                  auditDetails:
+                    createdBy: ""
+                    lastModifiedBy: ""
+                    createdTime: 1708583381363
+                    lastModifiedTime: 1708583381363
+                  tenant2RoleMap:
+                    - uuid: "ac1df19c-e3bd-4258-9a26-cca13baa5afc"
+                      role:
+                        id: "UNIVERSITY"
+                        name: "UNIVERSITY"
+                        description: "desc"
+                        type: "TENANT"
+                        parentRole: null
+                        auditDetails:
+                          createdBy: ""
+                          lastModifiedBy: ""
+                          createdTime: 1708583381316
+                          lastModifiedTime: 1708583381316
+                  tenant2TenantMap: []
+                enable: true
+                auditDetails:
+                  createdBy: ""
+                  lastModifiedBy: ""
+                  createdTime: 1709266516319
+                  lastModifiedTime: 1709266516319
+
+components:
+  schemas:
+    AuditDetails:
+      description: Common fields for tracking creation and modification of entities.
+      type: object
+      properties:
+        createdBy:
+          type: string
+          description: UUID of the user who created the record.
+        lastModifiedBy:
+          type: string
+          description: UUID of the user who last modified the record.
+        createdTime:
+          type: integer
+          format: int64
+          description: Unix epoch timestamp (milliseconds) of creation time.
+        lastModifiedTime:
+          type: integer
+          format: int64
+          description: Unix epoch timestamp (milliseconds) of last modification time.
+
+    User:
+      description: Minimal User details used in the context of RequestInfo.
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique identifier for the user.
+        firstName:
+          type: string
+          description: User's first name.
+        middleName:
+          type: string
+          description: User's middle name.
+        lastName:
+          type: string
+          description: User's last name.
+        # Other user fields omitted for brevity...
+
+    UserInfo:
+      description: Contextual information about the authenticated user and their session.
+      type: object
+      properties:
+        userDetails:
+          $ref: '#/components/schemas/User'
+          description: Detailed information about the logged-in user.
+        selectedTenantId:
+          type: string
+          description: The ID of the Tenant/Organization the user is currently operating under (e.g., "PF_ORG").
+        selectedRoleIds:
+          type: array
+          items:
+            type: string
+            description: List of role IDs selected by the user for the current session (e.g., ["PF_ORG.PF_ADMIN"]).
+
+    RequestInfo:
+      description: The standard header object required in all MDMS service requests for context.
+      type: object
+      properties:
+        userInfo:
+          $ref: '#/components/schemas/UserInfo'
+          description: Information about the user and their session.
+
+    Role:
+      description: Platform Role definition (either TENANT or USER type).
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique ID of the role (e.g., "PF_ORG.PF_USER").
+        name:
+          type: string
+          description: The name of the role (e.g., "PF_USER").
+        description:
+          type: string
+          description: A detailed description of the role's purpose.
+        type:
+          type: string
+          enum: [TENANT, USER]
+          description: The category of the role (TENANT roles for organizations, USER roles for individuals).
+        parentRole:
+          $ref: '#/components/schemas/Role'
+          nullable: true
+          description: The parent role in the role hierarchy, if applicable.
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+
+    # UPDATED Tenant schema to correctly define the items in the mapping arrays
+    Tenant:
+      description: Organizational unit/Tenant definition including relational mappings.
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        code:
+          type: string
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+        tenant2RoleMap:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tenant2RoleMapDetails'
+          nullable: true
+          description: List of roles associated with this tenant.
+        tenant2TenantMap:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tenant2TenantMapDetails'
+          nullable: true
+          description: List of hierarchical mappings (parent/child) for this tenant. 
+
+    Resource:
+      description: API endpoint, UI link, or other protected resource definition.
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique ID of the Resource (e.g., "RESAPI01").
+        displayName:
+          type: string
+          description: A human-readable name or path for the resource.
+        altName:
+          type: string
+          nullable: true
+          description: Alternative or secondary name.
+        type:
+          type: string
+          enum: [API, HMENU, VMENU, URL, CARD]
+          description: The type of resource (API endpoint, Horizontal Menu, Vertical Menu, URL link, or Card).
+        path:
+          type: string
+          nullable: true
+          description: The UI path component for the resource.
+        orderNo:
+          type: string
+          nullable: true
+          description: Order index for display purposes.
+        icon:
+          type: string
+          nullable: true
+          description: Icon identifier for UI display.
+        enabled:
+          type: boolean
+          description: Indicates if the resource is currently active/enabled.
+        link:
+          type: string
+          nullable: true
+          description: A full URL link if the resource type is URL.
+        apiEndpoint:
+          type: string
+          description: The full API endpoint path (e.g., "/pf-dashboard-service/_getData/FileterLocationPsList").
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+
+    ResourceAccessDetails:
+      description: Mapping between a Resource and a Role, granting access.
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique ID of the access mapping record.
+        resource:
+          $ref: '#/components/schemas/Resource'
+          description: The resource being accessed.
+        role:
+          $ref: '#/components/schemas/Role'
+          description: The role that is granted access.
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+
+    ModuleDetails:
+      description: Definition of a functional application module.
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique ID of the Module (e.g., "MOD001").
+        desc:
+          type: string
+          description: Description of the module (e.g., "Admission Module").
+        enable:
+          type: boolean
+          description: Flag indicating if the module is enabled system-wide.
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+
+    ModuleTenantMapDetails:
+      description: Mapping/relation between a Module and a specific Tenant.
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique ID of the module-tenant map record.
+        module:
+          $ref: '#/components/schemas/ModuleDetails'
+          description: The module mapped to the tenant.
+        tenant:
+          $ref: '#/components/schemas/Tenant'
+          description: The tenant the module is mapped to.
+        enable:
+          type: boolean
+          description: Flag indicating if the module is enabled for this specific tenant.
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+
+    BulkFullMdmsBootstrapResponse:
+      description: Response object providing a summary of the bulk operation results.
+      type: object
+      properties:
+        totalRecordsSentForCreation:
+          type: integer
+          format: int32
+          description: Total number of distinct records read from the Excel file for processing.
+        totalRecordsCreated:
+          type: integer
+          format: int32
+          description: Total number of records successfully created across all categories.
+        totalRecordsNotCreated:
+          type: integer
+          format: int32
+          description: Total number of records that failed creation.
+        totalRolesCreated:
+          type: integer
+          format: int32
+          description: Count of Roles successfully created.
+        totalRolesNotCreated:
+          type: integer
+          format: int32
+          description: Count of Roles that failed creation.
+        totalTenantsCreated:
+          type: integer
+          format: int32
+          description: Count of Tenants successfully created.
+        totalTenantsNotCreated:
+          type: integer
+          format: int32
+          description: Count of Tenants that failed creation.
+        totalResourcesCreated:
+          type: integer
+          format: int32
+          description: Count of Resources successfully created.
+        totalResourcesNotCreated:
+          type: integer
+          format: int32
+          description: Count of Resources that failed creation.
+        totalResourceAccessCreated:
+          type: integer
+          format: int32
+          description: Count of Resource Access mappings successfully created.
+        totalResourceAccessNotCreated:
+          type: integer
+          format: int32
+          description: Count of Resource Access mappings that failed creation.
+        totalModulesCreated:
+          type: integer
+          format: int32
+          description: Count of Modules successfully created.
+        totalModulesNotCreated:
+          type: integer
+          format: int32
+          description: Count of Modules that failed creation.
+        totalModuleMappingCreated:
+          type: integer
+          format: int32
+          description: Count of Module-to-Tenant mappings successfully created.
+        totalModuleMappingNotCreated:
+          type: integer
+          format: int32
+          description: Count of Module-to-Tenant mappings that failed creation.
+        rolesCreated:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+          description: List of detailed Role objects that were successfully created.
+        tenantsCreated:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tenant'
+          description: List of detailed Tenant objects that were successfully created.
+        resourcesCreated:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+          description: List of detailed Resource objects that were successfully created.
+        resourceAccessCreated:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceAccessDetails'
+          description: List of detailed Resource Access objects that were successfully created.
+        modulesCreated:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleDetails'
+          description: List of detailed Module objects that were successfully created.
+        moduleMappingCreated:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleTenantMapDetails'
+          description: List of detailed Module-to-Tenant mapping objects that were successfully created.
+        errorDescList:
+          type: array
+          items:
+            type: string
+            description: List of error descriptions or messages for failed records.
+
+    RoleDto:
+      description: Data transfer object for creating or updating a Role entity.
+      required:
+        - name
+        - description
+        - type
+      type: object
+      properties:
+        id:
+          type: string
+          description: The unique ID of the Role (system-generated on creation).
+        name:
+          type: string
+          pattern: "^[A-Z_]{1,254}$"
+          description: The unique, uppercase name of the role (e.g., "HEADMASTER").
+        description:
+          type: string
+          description: A detailed description of the role's responsibilities.
+        type:
+          type: string
+          enum: [USER, TENANT]
+          pattern: ^(USER|TENANT)$
+          description: |
+            The category of the role:
+            - **USER**: A role assigned to an individual user (e.g., ADMIN, PRINCIPAL).
+            - **TENANT**: A top-level organizational role, often acting as a parent to USER roles.
+        parentRoleId:
+          type: string
+          description: |
+            The ID of the parent role.
+            - **Mandatory** if `type` is `USER`.
+            - This ID **must** belong to a Role entity of type `TENANT`.
+        path:
+          type: string
+          description: Reserved for hierarchy path tracking, typically system-generated/updated.
+
+    RoleRequestDto:
+      description: Wrapper object for creating a single Role.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+        roleDto:
+          $ref: '#/components/schemas/RoleDto'
+          description: The Role data to be created.
+    BulkCreateRolesResponse:
+      description: Response object for the bulk Role creation operation.
+      type: object
+      properties:
+        totalRolesSentForCreation:
+          type: integer
+          format: int32
+          description: Total number of role records read from the Excel file for processing.
+        totalRolesCreated:
+          type: integer
+          format: int32
+          description: Total number of Roles successfully created.
+        totalRolesNotCreated:
+          type: integer
+          format: int32
+          description: Total number of Roles that failed creation.
+        rolesCreated:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+          description: List of detailed Role objects that were successfully created.
+        errorDescList:
+          type: array
+          items:
+            type: string
+            description: List of error descriptions or messages for failed records. 
+    SuccessResponse:
+      description: Generic response for successful operations that return a boolean status.
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Indicates whether the operation (e.g., delete) was successful.
+          example: true
+
+    SearchRoleDto:
+      description: Request body used for searching roles, typically containing the RequestInfo and additional search fields.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+        emailId:
+          type: string
+          description: Additional search criteria for the user's email ID (may overlap with query parameters, depending on the implementation).
+
+    TenantDto:
+      description: Data transfer object for creating or updating a Tenant entity.
+      type: object
+      required:
+        - name
+        - description
+        - roleId
+      properties:
+        id:
+          type: string
+          description: The unique ID of the Tenant (optional for create, mandatory for update).
+        name:
+          type: string
+          description: The name of the organization/tenant (e.g., "TEST_ORG").
+        description:
+          type: string
+          description: A brief description of the tenant.
+        code:
+          type: string
+          description: An optional external code for the tenant.
+        parentTenant:
+          type: string
+          nullable: true
+          description: The ID of the parent Tenant/Organization for establishing a hierarchy.
+        roleId:
+          type: string
+          description: The ID of the primary role to which this tenant is associated. This role MUST be of type 'TENANT'.
+
+    TenantRequestDto:
+      description: Wrapper object for creating a single Tenant.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+        tenantDto:
+          $ref: '#/components/schemas/TenantDto'
+          description: The Tenant data to be created.
+
+    Tenant2RoleMapDetails:
+      description: Mapping object linking a Tenant to a specific Role.
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/Role'
+          description: The detailed Role object mapped to the Tenant.
+        # Tenant object is implied by the parent Tenant response structure.
+
+    # Note: Tenant2TenantMapDetails is included for completeness,
+    # though the response example showed 'null'.
+    Tenant2TenantMapDetails:
+      description: Mapping object for Tenant hierarchy (parent-child relationship).
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        # Fields like parent/child tenant ID would be here
+        # For simplicity, using generic object until structure is confirmed.
+        type:
+          type: object
+          description: Placeholder for detailed tenant-to-tenant map structure.
+    
+    BulkCreateTenantResponse:
+      description: Response object providing a summary of the bulk Tenant creation results.
+      type: object
+      properties:
+        totalTenantsSentForCreation:
+          type: integer
+          format: int32
+          description: Total number of tenant records read from the Excel file.
+        totalTenantsCreated:
+          type: integer
+          format: int32
+          description: Total number of Tenants successfully created/updated.
+        totalTenantsNotCreated:
+          type: integer
+          format: int32
+          description: Total number of Tenants that failed creation/update.
+        tenantsCreated:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tenant'
+          description: List of detailed Tenant objects that were successfully created.
+        errorDescList:
+          type: array
+          items:
+            type: string
+            description: List of error descriptions or messages for failed records.
+    ResourceDto:
+      description: Data transfer object for creating or updating a Resource entity.
+      type: object
+      required:
+        - displayName
+        - type
+        - enabled
+      properties:
+        id:
+          type: string
+          description: The unique ID of the Resource (system-generated on creation).
+        code:
+          type: string
+          description: A unique, human-readable identifier for the resource.
+        displayName:
+          type: string
+          description: A display name for the UI or a descriptive name for the API.
+        altName:
+          type: string
+          nullable: true
+          description: Alternative or secondary name, typically used for search/filtering.
+        type:
+          type: string
+          enum: [API, HMENU, VMENU, URL, CARD]
+          description: |
+            The type of resource:
+            - **API**: A backend API endpoint. Requires `apiEndpoint`.
+            - **HMENU/VMENU**: Horizontal or Vertical Menu item for navigation.
+            - **URL**: An external link.
+            - **CARD**: A dashboard card or similar UI component.
+        path:
+          type: string
+          nullable: true
+          description: The UI path component for navigational resources (HMENU/VMENU).
+        orderNo:
+          type: string
+          nullable: true
+          description: Order index for display purposes in menus.
+        icon:
+          type: string
+          nullable: true
+          description: Icon identifier for UI display.
+        enabled:
+          type: boolean
+          description: Indicates if the resource is currently active/enabled.
+        link:
+          type: string
+          nullable: true
+          description: A full URL link if the resource type is URL.
+        apiEndpoint:
+          type: string
+          nullable: true
+          description: The full API endpoint path (Mandatory if `type` is 'API').
+
+    ResourceRequestDto:
+      description: Wrapper object for creating a single Resource.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+        resourceDto:
+          $ref: '#/components/schemas/ResourceDto'
+          description: The Resource data to be created.
+    BulkCreateResourceResponse:
+      description: Response object providing a summary of the bulk Resource creation results.
+      type: object
+      properties:
+        totalResourcesSentForCreation:
+          type: integer
+          format: int32
+          description: Total number of resource records read from the Excel file.
+        totalResourcesCreated:
+          type: integer
+          format: int32
+          description: Total number of Resources successfully created/updated.
+        totalResourcesNotCreated:
+          type: integer
+          format: int32
+          description: Total number of Resources that failed creation/update.
+        resourcesCreated:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+          description: List of detailed Resource objects that were successfully created.
+        errorDescList:
+          type: array
+          items:
+            type: string
+            description: List of error descriptions or messages for failed records.
+    ResourceSearchDto:
+      description: Search criteria for querying Resource entities.
+      type: object
+      properties:
+        id:
+          type: string
+          description: Filter by the unique ID of the Resource (e.g., "RESAPI15").
+        displayName:
+          type: string
+          description: Filter by the display name of the resource.
+        altName:
+          type: string
+          description: Filter by the alternative name of the resource.
+        type:
+          type: string
+          enum: [API, HMENU, VMENU, URL, CARD]
+          description: Filter by the Resource type.
+        apiEndpoint:
+          type: string
+          description: Filter by the full API endpoint path (relevant if `type` is 'API').
+        enabled:
+          type: boolean
+          description: Filter by the enabled/disabled status.
+        path:
+          type: string
+          description: Filter by the UI path component.
+        orderNo:
+          type: string
+          description: Filter by the order number.
+        icon:
+          type: string
+          description: Filter by the icon identifier.
+        link:
+          type: string
+          description: Filter by the link URL.
+
+    ResourceSearchRequestDto:
+      description: Wrapper object for searching Resources.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+        resourceSearchDto:
+          $ref: '#/components/schemas/ResourceSearchDto'
+          description: The search criteria object.
+    ResourceAccessDto:
+      description: Data transfer object for linking a Role and a Resource.
+      type: object
+      required:
+        - roleId
+        - resourceId
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique ID of the Resource Access mapping (optional).
+        roleId:
+          type: string
+          description: The unique ID of the Role being granted access.
+        resourceId:
+          type: string
+          description: The unique ID of the Resource to be accessed.
+
+    ResourceAccessRequestDto:
+      description: Wrapper object for creating a single Resource Access mapping.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+        resourceAccessDto:
+          $ref: '#/components/schemas/ResourceAccessDto'
+          description: The Role-Resource access data to be created.
+
+    ResourceAccess:
+      description: Represents a successful mapping between a Resource and a Role.
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: The unique identifier for this Resource Access record.
+        resource:
+          $ref: '#/components/schemas/Resource'
+          description: The details of the Resource involved in the access grant.
+        role:
+          $ref: '#/components/schemas/Role'
+          description: The details of the Role that was granted access.
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+    BulkCreateResourceAccessResponse:
+      description: Response object providing a summary of the bulk Resource Access creation results.
+      type: object
+      properties:
+        totalResourceAccessSentForCreation:
+          type: integer
+          format: int32
+          description: Total number of resource access records read from the Excel file.
+        totalResourceAccessCreated:
+          type: integer
+          format: int32
+          description: Total number of Resource Access mappings successfully created/updated.
+        totalResourceAccessNotCreated:
+          type: integer
+          format: int32
+          description: Total number of Resource Access mappings that failed creation/update.
+        resourceAccessCreated:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceAccess'
+          description: List of detailed Resource Access objects that were successfully created.
+        errorDescList:
+          type: array
+          items:
+            type: string
+            description: List of error descriptions or messages for failed records.
+    ResourceSearchMyAccessReq:
+      description: Wrapper object for searching a user's resource access, primarily containing the RequestInfo for user identification.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header, containing the User Details required to fetch their access permissions.
+    ResourceAccessSearchDto:
+      description: Search criteria for querying Resource Access mappings.
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Filter by the unique UUID of the Resource Access mapping itself.
+        roleId:
+          type: string
+          description: Filter by the ID of the Role involved in the access mapping.
+        resourceId:
+          type: string
+          description: Filter by the ID of the Resource involved in the access mapping.
+
+    ResourceAccessSearchRequestDto:
+      description: Wrapper object for searching Resource Access mappings using V1 criteria.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+        accessSearchDto:
+          $ref: '#/components/schemas/ResourceAccessSearchDto'
+          description: The search criteria object.
+    GatewayResourceAccessReq:
+      description: Minimal request body for internal system calls like the Gateway, typically just requiring the RequestInfo.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+    ModuleDto:
+      description: Data transfer object for creating or updating a Module entity.
+      type: object
+      required:
+        - code
+        - desc
+        - enable
+      properties:
+        code:
+          type: string
+          description: A unique code for the module (used as the primary ID).
+        desc:
+          type: string
+          description: A detailed description of the module.
+        enable:
+          type: boolean
+          description: Status indicating whether the module is enabled or disabled.
+
+    ModuleRequestDto:
+      description: Wrapper object for creating a single Module.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+        moduleDto:
+          $ref: '#/components/schemas/ModuleDto'
+          description: The Module data to be created.
+
+    Module:
+      description: Represents a Module entity in the system.
+      type: object
+      properties:
+        id:
+          type: string
+          description: The unique ID of the module (matches the `code` field).
+        desc:
+          type: string
+          description: A detailed description of the module.
+        enable:
+          type: boolean
+          description: Status indicating whether the module is enabled or disabled.
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails'
+          description: Audit details for tracking creation and modification.
+      
+    ModuleDeleteDto:
+      description: Minimal DTO for deleting a Module, containing only the identifier.
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: The unique ID (code) of the module to be deleted.
+
+    ModuleDeleteRequestDto:
+      description: Wrapper object for deleting a single Module.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+        moduleDto:
+          $ref: '#/components/schemas/ModuleDeleteDto'
+          description: The Module identifier data.  
+    Module2TenantMapDto:
+      description: Data transfer object for linking a Module and a Tenant.
+      type: object
+      required:
+        - moduleId
+        - tenantId
+        - enable
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique ID of the mapping (optional, used for update/delete).
+        moduleId:
+          type: string
+          description: The ID (code) of the Module being mapped.
+        tenantId:
+          type: string
+          description: The ID of the Tenant the Module is being enabled for.
+        enable:
+          type: boolean
+          description: Status indicating if the module is active for the tenant (true/false).
+
+    Module2TenantMapRequestDto:
+      description: Wrapper object for creating a single Module-Tenant mapping.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+        moduleTenantDto:
+          $ref: '#/components/schemas/Module2TenantMapDto'
+          description: The Module-Tenant mapping data to be created.
+
+    Module2TenantMap:
+      description: Represents a Module-Tenant access mapping entity.
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: The unique identifier for this mapping record.
+        module:
+          $ref: '#/components/schemas/Module'
+          description: The details of the Module involved.
+        tenant:
+          $ref: '#/components/schemas/Tenant'
+          description: The details of the Tenant involved.
+        enable:
+          type: boolean
+          description: Status indicating if the module is enabled for the tenant.
+        auditDetails:
+          $ref: '#/components/schemas/AuditDetails' 
+
+    Module2TenantMapDeleteDto:
+      description: Minimal DTO for deleting a Module-Tenant Map, requiring only the UUID.
+      type: object
+      required:
+        - uuid
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: The unique UUID of the Module-Tenant mapping to be deleted.
+        # Include other fields as optional if the API signature is loose
+        moduleId:
+          type: string
+          description: The ID of the Module (optional).
+        tenantId:
+          type: string
+          description: The ID of the Tenant (optional).
+
+    Module2TenantMapDeleteRequestDto:
+      description: Wrapper object for deleting a single Module-Tenant mapping.
+      type: object
+      properties:
+        requestInfo:
+          $ref: '#/components/schemas/RequestInfo'
+          description: Standard Request Information header.
+        moduleTenantDto:
+          $ref: '#/components/schemas/Module2TenantMapDeleteDto'
+          description: The Module-Tenant mapping identifier data.

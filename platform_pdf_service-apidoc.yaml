@@ -1,0 +1,133 @@
+openapi: 3.0.1
+info:
+  title: Platform PDF Service
+  version: 1.0.0
+  description: |
+    This service utilizes the **Jasper Reports Library** to generate professional PDF documents from JSON data.
+    
+    ### Key Concept:
+    The service takes a complex data object, maps it to a `.jrxml` template (defined by `templateName`), generates the file, and stores it. The user receives a `fileStoreId` which acts as a permanent link to the document.
+
+paths:
+  /generate:
+    post:
+      tags:
+        - PDF Generation
+      summary: Generate PDF (Hardcoded Example)
+      description: |
+        Use this endpoint to send full billing data and receive a storage ID. 
+        
+        ### Attribute Explanations:
+        
+        #### **Core Header Attributes**
+        * **templateName**: String. The name of the Jasper `.jrxml` file (e.g., `property-tax-bill`) used to style the data.
+        * **requestInfo**: Object. Contains metadata about the requester.
+            * **authToken**: String. The session token for authorization.
+            * **userInfo**: Object. Includes the `uuid` of the logged-in user and their current `selectedTenant` (Cantonment Board) context.
+        
+        #### **Business Data (`data` object)**
+        * **tenantName**: String. The official name of the city or board (header).
+        * **billTitle**: String. The document header (e.g., "Property Tax Due Statement").
+        * **billNo / billDate**: String. Unique identifiers for the specific bill generated.
+        * **uniquePropertyId**: String. The official PTIN (Property Tax Identification Number).
+        * **assesseeName**: String. The name of the property owner(s).
+        * **arv**: String. **Annual Rateable Value**; the base value used for tax calculations.
+        * **usageType**: String. Category of property (Residential, Commercial, etc.).
+        
+        #### **Table & Financial Data**
+        * **taxItems**: Array. Each object inside represents a row in the PDF calculation table.
+            * **taxDescription**: Name of the tax component (e.g., "House Tax").
+            * **arrearAmount**: Unpaid amount from previous financial years.
+            * **currentAmount**: Amount due for the current period.
+            * **totalAmount**: The calculated sum for that specific tax line.
+        * **totalBillAmount**: Number. Gross total of all tax items.
+        * **totalPayableAmount**: Number. Final net amount to be paid by the citizen.
+        * **totalPayableAmountInWords**: String. Legal textual representation of the final amount.
+        
+        #### **Footer & Instructions**
+        * **billDueDate**: String. The deadline for payment before penalties occur.
+        * **notes**: Array of Strings. Terms and Conditions or legal disclaimers printed at the bottom of the bill.
+        * **onlinePaymentUrl**: String. Link provided for the citizen to pay via the portal.
+
+      operationId: generatePdf
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              templateName: "property-tax-bill"
+              requestInfo:
+                authToken: "0029be95-8fbb-4ada-a4d4-33e8bf08d4a1"
+                userInfo:
+                  userDetails:
+                    uuid: "03a7ca95-78f2-4d45-b8a3-223852eac1b6"
+                    failedAttempts: 0
+                    isDeleted: false
+                    isDisabled: false
+                  selectedTenant:
+                    uuid: "61275610-80e6-4349-adbd-ababc66a03f0"
+                    name: null
+                    description: null
+                    auditDetails: null
+                  selectedRoleDetails:
+                    - uuid: "8f641c19-e8c5-40ff-abf3-9a50b2707f31"
+              data:
+                tenantName: "Mathura Cantonment Board."
+                billTitle: "Property Tax Due Statement"
+                actReference: "(Under section 66(a) Cantonment Act 2006)"
+                taxPeriod: "Tax Bill for the period 01/04/2025 To 31/03/2026"
+                billNo: "BILL-14806720"
+                billDate: "24/07/2025"
+                uniquePropertyId: "PT-CB-MATH-2021-07-15-101749"
+                oldPropertyCode: "MHR/A/A-51/CBMW7CC00002-4"
+                ptinAbasPropertyId: ""
+                location: "Chandanvan Colony - Ward No. 7"
+                assesseeName: "Prajapti Kumar So Babu Lal & Neha Divakar Wo Pradeep Kumar"
+                usageType: "Residential"
+                arv: "1100"
+                address: "A/A-51,Chandanvan Col,Chandanvan Colony,Mathura - 281001"
+                taxItems:
+                  - taxDescription: "House Tax"
+                    arrearAmount: 1056.00
+                    currentAmount: 0.00
+                    demandAmount: 0.00
+                    amendedAmount: -1056.00
+                    totalAmount: 0.00
+                  - taxDescription: "Water Tax"
+                    arrearAmount: 0.00
+                    currentAmount: 0.00
+                    demandAmount: 0.00
+                    amendedAmount: 0.00
+                    totalAmount: 0.00
+                  - taxDescription: "Conservancy and Scavenging Tax"
+                    arrearAmount: 1896.00
+                    currentAmount: 0.00
+                    demandAmount: 0.00
+                    amendedAmount: -1896.00
+                    totalAmount: 0.00
+                totalBillAmount: 2952.00
+                interest: 0.00
+                amendedAdvance: 0.00
+                advanceCarryForward: 0.00
+                totalPayableAmount: 0.00
+                totalPayableAmountInWords: "NA"
+                billDueDate: "30/06/2025"
+                ceoName: "Mathura"
+                notes:
+                  - "Please note that in case of non-payment/incomplete payment of property tax dues by 30th June, a notice of demand will be issued as provided for under section 100 (1) of Cantonment Act, 2006. Demand Notice fee of Rs. 100/- will be charged on the issue of the same as per provision of section 100 (2) of the Act."
+                  - "As per the provision of section 102 (1) of Cantonment Act, 2006 interest of 1% will be levied every month on the balance amount due in case of non-receipt of property tax within 30 days from receipt of the said demand notice. As per the provision of section 102 (1) of Cantonment Act, 2006 interest of 1% will be levied every month on the balance amount due in case of non-receipt of property tax within 30 days from receipt of the said demand notice."
+                onlinePaymentUrl: "https://echhawani.gov.in/citizen"
+      responses:
+        "200":
+          description: PDF Generated Successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fileStoreId:
+                    type: string
+              example:
+                fileStoreId: "bce0aa47-8eed-4dd4-9f0c-ccfa90ff6668"

@@ -1,0 +1,106 @@
+openapi: 3.0.1
+info:
+  title: PF Reports Service
+  version: v0
+  description: |
+    ### Report Configuration Logic (User Guide)
+    This service uses a dynamic engine where a report ID (like **t1**) defines the entire data lifecycle.
+    
+    #### 1. Filter Configuration
+    Filters define how the user can slice the data. 
+    * **Title**: Must match the database column name.
+    * **Type**: `singleSelect` (uses `=` in SQL) or `multiSelect` (uses `IN` in SQL).
+    * **Values**: Static list of options.
+    * **ValueQuery**: SQL used to fetch distinct values if 'values' are not hardcoded.
+    
+    #### 2. Query Mapping (Example: t1 - TOTAL TRANSACTIONS)
+    The **t1** configuration maps UI inputs to SQL logic:
+    * **request2QueryMap**: Connects JSON request keys (e.g., `fromDate`) to SQL placeholders (`:from_date`).
+    * **Dynamic Snippets**: Fragments like `filter_group` are only appended to the query if the user selects that filter.
+    * **aggrQuery**: The final SQL template executed against the database.
+    
+    #### 3. How to add a new Filter (e.g., 'Place')
+    1. Define the filter in the config.
+    2. Add the mapping: `:filter_place : "AND place = ':place'"` (for single) or `"AND place IN (:place)"` (for array).
+    3. Update `aggrQuery`: Add `:filter_place` at the end of the WHERE clause.
+
+servers:
+  - url: http://localhost:8070/pf-reports-service
+
+paths:
+  /_getReportsScreenConfig:
+    post:
+      tags:
+        - reports-controller
+      summary: Get Filter Configuration for a Report
+      operationId: getScreenConfig
+      parameters:
+        - name: screenName
+          in: query
+          required: true
+          description: The configuration ID (e.g., t1)
+          schema:
+            type: string
+          example: "t1"
+      responses:
+        "200":
+          description: Configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                filters:
+                  - title: "Status"
+                    type: "singleSelect"
+                    values: ["Resolved", "Pending"]
+                    valueQuery: ["select distinct type from irs_table"]
+                  - title: "Group"
+                    type: "multiselect"
+                    values: ["M1", "M2", "M3"]
+                    valueQuery: ["select distinct type from irs_table"]
+
+  /_getReportsData:
+    post:
+      tags:
+        - reports-controller
+      summary: Get Tabular Report Data
+      operationId: getData
+      parameters:
+        - name: reportTitle
+          in: query
+          required: true
+          description: The configuration ID (e.g., t1)
+          schema:
+            type: string
+          example: "t1"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                t1:
+                  chartName: "TOTAL TRANSACTIONS"
+                  queries:
+                    - module: "IRS"
+                      request2QueryMap: "{\"fromDate\" : \":from_date\",\"toDate\" : \":to_date\",\"status\" : \":status\",\"group\" : \":filter_group\",\"status\" : \":filter_status\"}"
+                      filter_group: "AND \"group\" IN (:group)"
+                      filter_status: "AND status = ':status'"
+                      aggrQuery: "SELECT date, \"value\", \"group\" FROM public.issue1 WHERE date >= ':from_date' AND date <= ':to_date' :filter_group :filter_status"
+
+  /_health:
+    get:
+      tags:
+        - reports-controller
+      summary: Health Check
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "Healthy"
